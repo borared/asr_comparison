@@ -1,0 +1,20 @@
+# Hugging Face & PyTorch model cache
+.cache/
+temp/
+
+# Virtual environment
+.venv/
+env/
+venv/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE & Editor settings
+.vscode/
+.idea/
+
+# Logs & temp files
+*.log

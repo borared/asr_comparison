@@ -1,0 +1,5 @@
+torch
+qwen-asr
+transformers
+datasets[audio]
+accelerate
