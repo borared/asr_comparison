@@ -1,5 +1,6 @@
 # Hugging Face & PyTorch model cache
 .cache/
+cache/
 temp/
 
 # Virtual environment
