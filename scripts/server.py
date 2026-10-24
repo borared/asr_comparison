@@ -518,9 +518,9 @@ async def create_dataset_sample(
         f.write(json.dumps(gt_entry, ensure_ascii=False) + "\n")
 
     # 3. Model inference: reuse precomputed hypothesis if available, or transcribe now
-    if hypothesis_raw is not None and latency_sec is not None and float(latency_sec) > 0:
+    if hypothesis_raw is not None and (hypothesis_raw != "" or (latency_sec is not None and float(latency_sec) > 0)):
         raw_hyp = hypothesis_raw
-        lat_sec = float(latency_sec)
+        lat_sec = float(latency_sec) if latency_sec is not None else 0.0
     else:
         runner = get_or_load_runner(model_name)
         try:
@@ -551,7 +551,7 @@ async def create_dataset_sample(
         "insertions": i,
         "deletions": d,
         "sample_cer_pct": sample_cer_pct,
-        "latency_sec": round(latency_sec, 3),
+        "latency_sec": round(lat_sec, 3),
     }
 
     if breakdown_file.exists():
@@ -567,7 +567,7 @@ async def create_dataset_sample(
         with open(hyp_file, "a", encoding="utf-8") as f:
             f.write(
                 json.dumps(
-                    {"id": next_id, "hypothesis": raw_hyp, "latency_sec": round(latency_sec, 3)},
+                    {"id": next_id, "hypothesis": raw_hyp, "latency_sec": round(lat_sec, 3)},
                     ensure_ascii=False,
                 )
                 + "\n"
@@ -585,7 +585,7 @@ async def create_dataset_sample(
         "audio_filename": target_filename,
         "audio_url": f"/api/audio/{target_filename}",
         "duration_sec": duration_sec,
-        "latency_sec": round(latency_sec, 3),
+        "latency_sec": round(lat_sec, 3),
         "reference_raw": raw_ref,
         "reference_norm": norm_ref,
         "hypothesis_raw": raw_hyp,

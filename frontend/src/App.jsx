@@ -179,7 +179,10 @@ export default function App() {
             <ModelSelector
               models={models}
               selectedModel={selectedModel}
-              setSelectedModel={setSelectedModel}
+              setSelectedModel={(id) => {
+                setSelectedModel(id);
+                setLastPrediction(null);
+              }}
             />
           </div>
 
@@ -203,6 +206,7 @@ export default function App() {
               elapsedSec={elapsedSec}
               nextSampleId={nextSampleId}
               lastPrediction={lastPrediction}
+              setLastPrediction={setLastPrediction}
             />
           </div>
 

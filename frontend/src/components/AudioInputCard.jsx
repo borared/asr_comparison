@@ -15,6 +15,7 @@ export default function AudioInputCard({
   elapsedSec,
   nextSampleId,
   lastPrediction,
+  setLastPrediction,
 }) {
   const [inputMode, setInputMode] = useState('preloaded'); // 'preloaded' | 'upload' | 'mic'
   const [isRecording, setIsRecording] = useState(false);
@@ -25,12 +26,22 @@ export default function AudioInputCard({
   const timerRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  const resetPrediction = () => {
+    if (setLastPrediction) setLastPrediction(null);
+  };
+
+  const handleTabSwitch = (mode) => {
+    setInputMode(mode);
+    resetPrediction();
+  };
+
   // When preloaded sample is picked
   const handleSampleChange = (e) => {
     const id = e.target.value;
     setSelectedSampleId(id);
     setUploadedFile(null);
     setAudioPreviewUrl(null);
+    resetPrediction();
 
     const match = datasetSamples.find((s) => s.id === id);
     if (match) {
@@ -48,6 +59,7 @@ export default function AudioInputCard({
       setUploadedFile(file);
       setSelectedSampleId('');
       setAudioPreviewUrl(URL.createObjectURL(file));
+      resetPrediction();
     }
   };
 
@@ -68,6 +80,7 @@ export default function AudioInputCard({
       setUploadedFile(file);
       setSelectedSampleId('');
       setAudioPreviewUrl(URL.createObjectURL(file));
+      resetPrediction();
     }
   };
 
@@ -93,6 +106,7 @@ export default function AudioInputCard({
         setUploadedFile(file);
         setSelectedSampleId('');
         setAudioPreviewUrl(URL.createObjectURL(audioBlob));
+        resetPrediction();
         stream.getTracks().forEach((track) => track.stop());
       };
 
@@ -148,7 +162,7 @@ export default function AudioInputCard({
               background: inputMode === 'preloaded' ? 'var(--ink-black)' : '#FFFFFF',
               color: inputMode === 'preloaded' ? '#FFFFFF' : 'var(--ink-black)',
             }}
-            onClick={() => setInputMode('preloaded')}
+            onClick={() => handleTabSwitch('preloaded')}
           >
             Preloaded Samples ({datasetSamples.length})
           </button>
@@ -159,7 +173,7 @@ export default function AudioInputCard({
               background: inputMode === 'upload' ? 'var(--ink-black)' : '#FFFFFF',
               color: inputMode === 'upload' ? '#FFFFFF' : 'var(--ink-black)',
             }}
-            onClick={() => setInputMode('upload')}
+            onClick={() => handleTabSwitch('upload')}
           >
             Upload File (.wav/.mp3)
           </button>
@@ -170,7 +184,7 @@ export default function AudioInputCard({
               background: inputMode === 'mic' ? 'var(--ink-black)' : '#FFFFFF',
               color: inputMode === 'mic' ? '#FFFFFF' : 'var(--ink-black)',
             }}
-            onClick={() => setInputMode('mic')}
+            onClick={() => handleTabSwitch('mic')}
           >
             Record Mic
           </button>
@@ -292,54 +306,94 @@ export default function AudioInputCard({
           className="editorial-textarea"
           placeholder="បញ្ចូលអត្ថបទគំរូពិតប្រាកដដែលបាននិយាយ (Type or paste the expected spoken Khmer text here)..."
           value={expectedOutput}
-          onChange={(e) => setExpectedOutput(e.target.value)}
+          onChange={(e) => {
+            setExpectedOutput(e.target.value);
+            resetPrediction();
+          }}
           disabled={isLoading}
         />
       </div>
 
       {/* 03. Two-Step Execution Flow */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {/* Step 1: Run Model Prediction First (Yellow Button) */}
-        <button
-          type="button"
-          className="btn-mogo-run"
-          onClick={onRunTest}
-          disabled={isLoading || !hasAudio}
-        >
-          {isLoading ? (
-            <>
-              <Loader2 size={18} className="animate-spin" />
-              Evaluating Audio with Model... ({elapsedSec}s)
-            </>
-          ) : (
-            <>
-              <Play size={16} fill="currentColor" />
-              <span>Run Model Prediction & Push to Stack</span>
-              <ArrowRight size={18} strokeWidth={2.5} />
-            </>
-          )}
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <button
+            type="button"
+            className="btn-mogo-run"
+            onClick={onRunTest}
+            disabled={isLoading || !hasAudio}
+            style={{
+              cursor: isLoading || !hasAudio ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                <span>Evaluating Audio with Model... ({elapsedSec}s)</span>
+              </>
+            ) : (
+              <>
+                <Play size={16} fill="currentColor" />
+                <span>Step 1: Run Model Prediction & Push to Stack</span>
+                <ArrowRight size={18} strokeWidth={2.5} />
+              </>
+            )}
+          </button>
+          <div
+            style={{
+              fontSize: '0.75rem',
+              color: 'var(--ink-muted)',
+              textAlign: 'center',
+              fontFamily: 'JetBrains Mono, monospace',
+            }}
+          >
+            Transcribes audio, evaluates CER %, and pushes result to Stack below
+          </div>
+        </div>
 
-        {/* Step 2: Save to Benchmark Dataset (Blue Button) - Enabled after prediction */}
-        {hasPredicted && (
+        {/* Step 2: Save to Benchmark Dataset (Blue Button) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <button
             type="button"
             className="btn-mogo-run"
             style={{
-              background: 'var(--accent-cobalt)',
-              color: '#FFFFFF',
-              borderColor: 'var(--ink-black)',
+              background: hasPredicted ? 'var(--accent-cobalt)' : '#E2E8F0',
+              color: hasPredicted ? '#FFFFFF' : '#64748B',
+              borderColor: hasPredicted ? 'var(--ink-black)' : '#CBD5E1',
+              cursor: hasPredicted && !isLoading ? 'pointer' : 'not-allowed',
+              opacity: hasPredicted ? 1 : 0.75,
             }}
-            onClick={onSaveBenchmarkSample}
-            disabled={isLoading}
+            onClick={hasPredicted ? onSaveBenchmarkSample : undefined}
+            disabled={!hasPredicted || isLoading}
           >
             <PlusCircle size={18} />
             <span>
-              Save This Prediction to Benchmark Dataset (as {nextSampleId || 'km_eval_0019'})
+              {hasPredicted
+                ? `Step 2: Save Verified Prediction to Dataset (as ${nextSampleId || 'km_eval_0019'})`
+                : `Step 2: Save to Benchmark Dataset (Run Step 1 First)`}
             </span>
             <CheckCircle2 size={18} strokeWidth={2.5} />
           </button>
-        )}
+
+          <div
+            style={{
+              fontSize: '0.75rem',
+              color: hasPredicted ? 'var(--accent-cobalt)' : 'var(--ink-muted)',
+              textAlign: 'center',
+              fontFamily: 'JetBrains Mono, monospace',
+            }}
+          >
+            {hasPredicted ? (
+              <>
+                ✓ Hypothesis ready: "{lastPrediction.hypothesis_raw ? lastPrediction.hypothesis_raw.slice(0, 32) + '...' : '(Empty)'}"
+                {lastPrediction.sample_cer_pct !== null ? ` [CER: ${lastPrediction.sample_cer_pct}%]` : ''} • Click to commit sample
+              </>
+            ) : (
+              'Run Step 1 prediction above first to inspect hypothesis before saving'
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
