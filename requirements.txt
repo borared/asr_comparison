@@ -1,5 +1,14 @@
+# Local inference models
 torch
 qwen-asr
 transformers
 datasets[audio]
 accelerate
+
+# Evaluation metrics
+jiwer>=3.0.0
+pandas>=2.0.0
+
+# Cloud API models (optional / for scripts/transcribe_api.py)
+google-cloud-speech
+openai

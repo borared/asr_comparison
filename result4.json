@@ -1,6 +1,0 @@
-{
-  "model": "openai/whisper-large-v3",
-  "language": "Khmer (km)",
-  "audio": "E:\\University\\asr_testing\\dataset\\buffet2.mp3",
-  "text": "ខ្លាប់ប្រាប់ប្រាប់ប្រាប់ប្រាប់ប្រាប់ប្រាប់ប្រាប់ប្រាប់ប្រាប់ប្រាប់ប្រាប់ប្រាប់ប្រាប់ប្រាប់ប្រាប់ប្រាប់ប្រាប់ប�"
-}
