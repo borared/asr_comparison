@@ -140,3 +140,44 @@ asr_testing/
    * Both models can be trained/fine-tuned on consumer GPUs (e.g. RTX 3050 / RTX 4060) using LoRA (PEFT) and FP16 / 8-bit quantization.
 3. **Training Data Recommendations:**
    * Supplement `km_eval` with public open datasets (OpenSLR Khmer, Mozilla Common Voice Khmer) alongside specialized conversational domain recordings.
+
+---
+
+## 7. Interactive Evaluation Studio (Frontend & Backend)
+
+An interactive web application was developed for testing and comparing Khmer ASR models in real-time.
+
+### A. Tech Stack
+* **Frontend:** React 19 + Vite, Vanilla CSS design system (dark mode `#090d16`, glassmorphism, responsive grid, Khmer typography via `Kantumruy Pro` Google Font).
+* **Backend Bridge:** Python FastAPI (`scripts/server.py`) running on `http://127.0.0.1:8000`, interfacing directly with `scripts/run_inference.py`, `scripts/normalize.py`, and `jiwer`.
+* **State Management:** LIFO Evaluation Stack (`frontend/src/hooks/useAsrStack.js`) with localStorage persistence and CSV export.
+
+### B. Core Features
+1. **Model Selector:** Choose between the 5 benchmarked models (`meta_mms_1b`, `sengtha_whisper_base_khmer`, `seanghay_qwen3_asr_0_6b`, `google_chirp`, `openai_whisper_large_v3`). In-memory cache keeps loaded models fast.
+2. **Audio Input Options:**
+   * **Preloaded Evaluation Samples:** Pick any of the 16 verified audio recordings (`km_eval_0001` - `km_eval_0016`).
+   * **Upload Audio File:** Upload custom `.wav` or `.mp3` files.
+   * **Live Browser Microphone:** Record speech directly through the browser.
+3. **Manual Expected Output (Ground Truth):**
+   * Preloaded samples auto-fill the reference Khmer text, which can be modified.
+   * For custom uploads or mic recordings, users can type or paste the expected Khmer transcription.
+4. **LIFO Evaluation Stack:**
+   * Each prediction is pushed to the top of the stack (`push`).
+   * Supports `pop` (undo last prediction), `clear`, and `export to CSV` matching the `error_analysis` format.
+5. **Exact Metrics & Character Alignment:**
+   * Computes Substitutions ($S$), Deletions ($D$), Insertions ($I$), Reference Length ($N$), and CER (%).
+   * Renders color-coded character alignment tokens (`match`, `substitution`, `deletion`, `insertion`).
+6. **Benchmark Leaderboard:**
+   * Live consolidated ranking table from `results/metrics_summary.csv`.
+   * Per-model sample-by-sample error analysis modal viewer.
+
+### C. Launch Instructions
+```bash
+# Terminal 1: Launch FastAPI Backend
+.venv\Scripts\python.exe -m uvicorn scripts.server:app --host 127.0.0.1 --port 8000
+
+# Terminal 2: Launch Vite Frontend
+cd frontend
+npm run dev
+# Studio is accessible at http://localhost:5173
+```
