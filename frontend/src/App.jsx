@@ -47,6 +47,8 @@ export default function App() {
     fetchDataset();
   }, []);
 
+  const [lastPrediction, setLastPrediction] = useState(null);
+
   // Standard Run Prediction (Test & Stack only)
   const handleRunTest = async () => {
     if (!uploadedFile && !selectedSampleId) {
@@ -83,6 +85,7 @@ export default function App() {
 
       const result = await response.json();
       push(result);
+      setLastPrediction(result);
     } catch (err) {
       console.error('Prediction Error:', err);
       alert('Error during prediction: ' + err.message);
@@ -92,17 +95,11 @@ export default function App() {
     }
   };
 
-  // Save to Benchmark Dataset & Evaluate directly into Breakdown & Leaderboard
+  // Step 2: Save the already predicted evaluation into the Benchmark Dataset & Breakdown
   const handleSaveBenchmarkSample = async () => {
-    if (!uploadedFile) {
-      alert('Please upload an audio file or record microphone audio first.');
+    if (!lastPrediction) {
+      alert('Please run model prediction first before saving to benchmark dataset.');
       return;
-    }
-    if (!expectedOutput || !expectedOutput.trim()) {
-      const proceed = window.confirm(
-        'You have not entered any Expected Output (Ground Truth Reference). Proceed with empty reference?'
-      );
-      if (!proceed) return;
     }
 
     setIsLoading(true);
@@ -112,9 +109,11 @@ export default function App() {
     }, 1000);
 
     const formData = new FormData();
-    formData.append('model_name', selectedModel);
-    formData.append('expected_output', expectedOutput || '');
-    formData.append('file', uploadedFile);
+    formData.append('model_name', lastPrediction.model_id || selectedModel);
+    formData.append('expected_output', lastPrediction.reference_raw || expectedOutput || '');
+    formData.append('cached_filename', lastPrediction.cached_filename || lastPrediction.audio_filename);
+    formData.append('hypothesis_raw', lastPrediction.hypothesis_raw || '');
+    formData.append('latency_sec', String(lastPrediction.latency_sec || 0.0));
 
     try {
       const response = await fetch('/api/dataset/create-sample', {
@@ -128,12 +127,12 @@ export default function App() {
       }
 
       const result = await response.json();
-      // Push result to stack
+      // Push updated item with is_benchmark_sample flag
       push(result);
       // Refresh dataset and next ID
       fetchDataset();
-      // Reset input file
-      setUploadedFile(null);
+      // Clear last prediction state
+      setLastPrediction(null);
       alert(
         `Successfully saved sample as ${result.id}!\n\nStored in data/raw_audio/, registered in ground_truth.jsonl, and added directly to the ${selectedModel} Sample-by-Sample Breakdown.`
       );
@@ -203,6 +202,7 @@ export default function App() {
               isLoading={isLoading}
               elapsedSec={elapsedSec}
               nextSampleId={nextSampleId}
+              lastPrediction={lastPrediction}
             />
           </div>
 

@@ -98,6 +98,32 @@ def compute_character_diff(norm_ref: str, norm_hyp: str):
     return s, i, d, cer_pct, diff_tokens
 
 
+def convert_to_pcm_wav(input_path: Path, output_path: Path) -> float:
+    """
+    Converts any audio file (WebM from browser mic, MP3, OGG, WAV, etc.) to 
+    16kHz 16-bit mono PCM WAV using ffmpeg, and returns duration in seconds.
+    """
+    import subprocess
+    import soundfile as sf
+    cmd = [
+        "ffmpeg", "-y", "-i", str(input_path),
+        "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le",
+        str(output_path)
+    ]
+    try:
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        info = sf.info(str(output_path))
+        return round(float(info.duration), 2)
+    except Exception as e:
+        logger.warning(f"ffmpeg conversion error: {e}. Falling back to direct copy.")
+        shutil.copyfile(input_path, output_path)
+        try:
+            info = sf.info(str(output_path))
+            return round(float(info.duration), 2)
+        except Exception:
+            return 0.0
+
+
 @app.get("/api/health")
 def health():
     return {
@@ -347,18 +373,23 @@ async def predict_audio(
 
     # 1. Determine audio source
     if file and file.filename:
-        # User uploaded a file
-        filename = f"upload_{int(time.time() * 1000)}_{file.filename}"
-        audio_path = UPLOAD_DIR / filename
-        with open(audio_path, "wb") as buffer:
+        # User uploaded a file or recorded mic audio
+        raw_temp = UPLOAD_DIR / f"raw_{int(time.time() * 1000)}_{file.filename}"
+        with open(raw_temp, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        audio_filename = file.filename
-        audio_url = f"/api/audio/{filename}"
+
+        # Convert to 16kHz 16-bit mono PCM WAV for universal ASR compatibility
+        pcm_filename = f"upload_{int(time.time() * 1000)}.wav"
+        pcm_path = UPLOAD_DIR / pcm_filename
+        duration_sec = convert_to_pcm_wav(raw_temp, pcm_path)
         try:
-            import librosa
-            duration_sec = round(float(librosa.get_duration(path=str(audio_path))), 2)
+            raw_temp.unlink(missing_ok=True)
         except Exception:
-            duration_sec = 0.0
+            pass
+
+        audio_path = str(pcm_path)
+        audio_filename = pcm_filename
+        audio_url = f"/api/audio/{pcm_filename}"
 
     elif sample_id:
         # Preloaded sample selected
@@ -412,6 +443,7 @@ async def predict_audio(
         "model_id": model_name,
         "model_name": MODEL_REGISTRY.get(model_name, {}).get("description", model_name),
         "audio_filename": audio_filename,
+        "cached_filename": audio_filename,
         "audio_url": audio_url,
         "duration_sec": duration_sec,
         "latency_sec": round(latency_sec, 3),
@@ -433,36 +465,44 @@ async def predict_audio(
 async def create_dataset_sample(
     model_name: str = Form("meta_mms_1b"),
     expected_output: str = Form(""),
-    file: UploadFile = File(...),
+    cached_filename: Optional[str] = Form(None),
+    hypothesis_raw: Optional[str] = Form(None),
+    latency_sec: Optional[float] = Form(None),
+    file: Optional[UploadFile] = File(None),
 ):
     """
-    Saves new audio directly into data/raw_audio/ with auto-incremented index (km_eval_XXXX),
-    appends ground truth to data/ground_truth.jsonl, runs inference, appends to the model's
+    Saves audio directly into data/raw_audio/ with auto-incremented index (km_eval_XXXX),
+    appends ground truth to data/ground_truth.jsonl, appends prediction to the model's
     error breakdown CSV, updates hypotheses/*.jsonl, and recalculates metrics_summary.csv.
+    Supports either newly uploaded files or cached audio files from prior prediction runs.
     """
-    import io
-    import librosa
     import pandas as pd
 
-    if not file or not file.filename:
-        raise HTTPException(status_code=400, detail="Audio file is required.")
-
     next_id = get_next_sample_id()
-    ext = ".mp3" if file.filename.lower().endswith(".mp3") else ".wav"
-    target_filename = f"{next_id}{ext}"
+    target_filename = f"{next_id}.wav"
     target_audio_path = RAW_AUDIO_DIR / target_filename
-
-    # 1. Save audio to data/raw_audio/
-    content = await file.read()
-    with open(target_audio_path, "wb") as f:
-        f.write(content)
-
     duration_sec = 0.0
-    try:
-        y, sr = librosa.load(io.BytesIO(content), sr=None)
-        duration_sec = round(float(len(y)) / float(sr), 2)
-    except Exception as e:
-        logger.warning(f"Could not compute audio duration: {e}")
+
+    # 1. Obtain audio from cached file or direct upload
+    if cached_filename:
+        source_cached = UPLOAD_DIR / cached_filename
+        if not source_cached.exists():
+            source_cached = RAW_AUDIO_DIR / cached_filename
+        if source_cached.exists():
+            duration_sec = convert_to_pcm_wav(source_cached, target_audio_path)
+        else:
+            raise HTTPException(status_code=400, detail=f"Cached audio file not found: {cached_filename}")
+    elif file and file.filename:
+        raw_temp = UPLOAD_DIR / f"raw_create_{int(time.time() * 1000)}_{file.filename}"
+        with open(raw_temp, "wb") as f:
+            f.write(await file.read())
+        duration_sec = convert_to_pcm_wav(raw_temp, target_audio_path)
+        try:
+            raw_temp.unlink(missing_ok=True)
+        except Exception:
+            pass
+    else:
+        raise HTTPException(status_code=400, detail="Either cached_filename or file is required.")
 
     raw_ref = (expected_output or "").strip()
     norm_ref = normalize_khmer(raw_ref)
@@ -477,14 +517,18 @@ async def create_dataset_sample(
     with open(GROUND_TRUTH_FILE, "a", encoding="utf-8") as f:
         f.write(json.dumps(gt_entry, ensure_ascii=False) + "\n")
 
-    # 3. Run inference on selected model
-    runner = get_or_load_runner(model_name)
-    try:
-        raw_hyp, latency_sec = runner.transcribe(str(target_audio_path))
-    except Exception as e:
-        logger.error(f"Inference error on created sample: {e}", exc_info=True)
-        raw_hyp = ""
-        latency_sec = 0.0
+    # 3. Model inference: reuse precomputed hypothesis if available, or transcribe now
+    if hypothesis_raw is not None and latency_sec is not None and float(latency_sec) > 0:
+        raw_hyp = hypothesis_raw
+        lat_sec = float(latency_sec)
+    else:
+        runner = get_or_load_runner(model_name)
+        try:
+            raw_hyp, lat_sec = runner.transcribe(str(target_audio_path))
+        except Exception as e:
+            logger.error(f"Inference error on created sample: {e}", exc_info=True)
+            raw_hyp = ""
+            lat_sec = 0.0
 
     norm_hyp = normalize_khmer(raw_hyp)
 

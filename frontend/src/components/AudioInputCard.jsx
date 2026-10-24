@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Mic, Square, FileAudio, ArrowRight, Loader2, Sparkles, Volume2, PlusCircle, Play } from 'lucide-react';
+import { Upload, Mic, Square, FileAudio, ArrowRight, Loader2, Play, PlusCircle, Volume2, CheckCircle2 } from 'lucide-react';
 
 export default function AudioInputCard({
   datasetSamples,
@@ -14,6 +14,7 @@ export default function AudioInputCard({
   isLoading,
   elapsedSec,
   nextSampleId,
+  lastPrediction,
 }) {
   const [inputMode, setInputMode] = useState('preloaded'); // 'preloaded' | 'upload' | 'mic'
   const [isRecording, setIsRecording] = useState(false);
@@ -85,9 +86,9 @@ export default function AudioInputCard({
       };
 
       mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-        const file = new File([audioBlob], `mic_recording_${Date.now()}.wav`, {
-          type: 'audio/wav',
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const file = new File([audioBlob], `mic_recording_${Date.now()}.webm`, {
+          type: 'audio/webm',
         });
         setUploadedFile(file);
         setSelectedSampleId('');
@@ -121,7 +122,7 @@ export default function AudioInputCard({
   };
 
   const hasAudio = !!uploadedFile || !!selectedSampleId;
-  const canSaveBenchmark = !!uploadedFile;
+  const hasPredicted = !!lastPrediction && !lastPrediction.is_benchmark_sample;
 
   return (
     <div className="input-block">
@@ -134,7 +135,7 @@ export default function AudioInputCard({
               className="tab-counter-pill"
               style={{ background: 'var(--card-warm)', color: 'var(--ink-black)' }}
             >
-              NEXT INDEX: {nextSampleId || 'km_eval_0017'}
+              NEXT INDEX: {nextSampleId || 'km_eval_0019'}
             </span>
           </div>
         </div>
@@ -207,7 +208,7 @@ export default function AudioInputCard({
               type="file"
               ref={fileInputRef}
               style={{ display: 'none' }}
-              accept=".wav,.mp3,audio/wav,audio/mpeg"
+              accept=".wav,.mp3,audio/wav,audio/mpeg,audio/webm"
               onChange={handleFileChange}
               disabled={isLoading}
             />
@@ -215,19 +216,19 @@ export default function AudioInputCard({
               <Upload size={20} color="var(--accent-cobalt)" />
             </div>
             <div className="dropzone-primary-text">
-              {uploadedFile ? uploadedFile.name : 'Click or drag .wav / .mp3 audio file'}
+              {uploadedFile ? uploadedFile.name : 'Click or drag .wav / .mp3 / audio file'}
             </div>
             <div className="dropzone-sub-text">
               {uploadedFile
                 ? `${(uploadedFile.size / 1024 / 1024).toFixed(2)} MB file ready`
-                : `Will auto-assign index: ${nextSampleId || 'km_eval_0017'}`}
+                : `Target ID: ${nextSampleId || 'km_eval_0019'}`}
             </div>
           </div>
         )}
 
         {/* Option C: Live Microphone */}
         {inputMode === 'mic' && (
-          <div className="dropzone-bento" style={{ padding: '28px' }}>
+          <div className="dropzone-bento" style={{ padding: '24px' }}>
             {!isRecording ? (
               <button
                 type="button"
@@ -264,8 +265,8 @@ export default function AudioInputCard({
             )}
             <div className="dropzone-sub-text" style={{ marginTop: '10px' }}>
               {isRecording
-                ? 'Listening to microphone...'
-                : `Recorded speech will auto-assign index: ${nextSampleId || 'km_eval_0017'}`}
+                ? 'Recording voice audio...'
+                : `Target ID: ${nextSampleId || 'km_eval_0019'}`}
             </div>
           </div>
         )}
@@ -296,46 +297,16 @@ export default function AudioInputCard({
         />
       </div>
 
-      {/* 03. Action Buttons: Benchmark Dataset Creation vs Temporary Stack Test */}
+      {/* 03. Two-Step Execution Flow */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {/* Button A: Store Directly into Dataset & Breakdown */}
-        {canSaveBenchmark && (
-          <button
-            type="button"
-            className="btn-mogo-run"
-            style={{
-              background: 'var(--accent-cobalt)',
-              color: '#FFFFFF',
-              borderColor: 'var(--ink-black)',
-            }}
-            onClick={onSaveBenchmarkSample}
-            disabled={isLoading || !uploadedFile}
-          >
-            {isLoading ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                Storing into Dataset & Evaluating Model... ({elapsedSec}s)
-              </>
-            ) : (
-              <>
-                <PlusCircle size={18} />
-                <span>
-                  Save to Benchmark Dataset & Breakdown (as {nextSampleId || 'km_eval_0017'})
-                </span>
-                <ArrowRight size={18} strokeWidth={2.5} />
-              </>
-            )}
-          </button>
-        )}
-
-        {/* Button B: Standard Prediction & Stack Push (Always available) */}
+        {/* Step 1: Run Model Prediction First (Yellow Button) */}
         <button
           type="button"
           className="btn-mogo-run"
           onClick={onRunTest}
           disabled={isLoading || !hasAudio}
         >
-          {isLoading && !canSaveBenchmark ? (
+          {isLoading ? (
             <>
               <Loader2 size={18} className="animate-spin" />
               Evaluating Audio with Model... ({elapsedSec}s)
@@ -348,6 +319,27 @@ export default function AudioInputCard({
             </>
           )}
         </button>
+
+        {/* Step 2: Save to Benchmark Dataset (Blue Button) - Enabled after prediction */}
+        {hasPredicted && (
+          <button
+            type="button"
+            className="btn-mogo-run"
+            style={{
+              background: 'var(--accent-cobalt)',
+              color: '#FFFFFF',
+              borderColor: 'var(--ink-black)',
+            }}
+            onClick={onSaveBenchmarkSample}
+            disabled={isLoading}
+          >
+            <PlusCircle size={18} />
+            <span>
+              Save This Prediction to Benchmark Dataset (as {nextSampleId || 'km_eval_0019'})
+            </span>
+            <CheckCircle2 size={18} strokeWidth={2.5} />
+          </button>
+        )}
       </div>
     </div>
   );

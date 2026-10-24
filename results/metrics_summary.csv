@@ -1,5 +1,5 @@
 model_name,total_samples,total_duration_sec,CER (%),avg_latency_sec
-google_chirp,16,230.63,44.08,5.47
+google_chirp,18,245.33,41.48,5.191
 meta_mms_1b,16,230.63,54.31,5.51
 sengtha_whisper_base_khmer,16,230.63,56.26,14.524
 seanghay_qwen3_asr_0_6b,16,230.63,59.39,17.77
