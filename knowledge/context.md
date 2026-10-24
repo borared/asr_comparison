@@ -145,31 +145,32 @@ asr_testing/
 
 ## 7. Interactive Evaluation Studio (Frontend & Backend)
 
-An interactive web application was developed for testing and comparing Khmer ASR models in real-time.
+An interactive web application was developed for testing, comparing, and managing Khmer ASR benchmark datasets in real-time.
 
-### A. Tech Stack
-* **Frontend:** React 19 + Vite, Vanilla CSS design system (dark mode `#090d16`, glassmorphism, responsive grid, Khmer typography via `Kantumruy Pro` Google Font).
-* **Backend Bridge:** Python FastAPI (`scripts/server.py`) running on `http://127.0.0.1:8000`, interfacing directly with `scripts/run_inference.py`, `scripts/normalize.py`, and `jiwer`.
-* **State Management:** LIFO Evaluation Stack (`frontend/src/hooks/useAsrStack.js`) with localStorage persistence and CSV export.
+### A. Tech Stack & Design Philosophy
+* **Frontend:** React 19 + Vite, Vanilla CSS design system inspired by contemporary graphic editorial design (Dsgners®) and bold neo-pop (MOGO).
+* **Zero AI Slop:** Completely avoids generic dark-mode glowing gradients and blurry glassmorphism. Uses warm editorial paper canvas (`#F6F4EE`), crisp flat borders (`1.5px solid #0F172A`), zero hard drop-shadows, and typography paired with `Kantumruy Pro` (Khmer), `Plus Jakarta Sans` / `Syne` (Headers), and `JetBrains Mono` (Metrics).
+* **Vertical 3-Container Flow:**
+  1. `Model Architecture` (Software badge selector with live architecture & parameter specs)
+  2. `Audio & Expected Output` (Preloaded sample picker, file upload, mic recorder, ground truth textarea)
+  3. `LIFO Evaluation Stack` (Push, pop, clear, CSV export, side-by-side comparison, character-level diffs)
+* **Backend Bridge:** Python FastAPI (`scripts/server.py`) running on `http://127.0.0.1:8000`, interfacing directly with `scripts/run_inference.py`, `scripts/normalize.py`, `jiwer`, and `data/`.
 
-### B. Core Features
-1. **Model Selector:** Choose between the 5 benchmarked models (`meta_mms_1b`, `sengtha_whisper_base_khmer`, `seanghay_qwen3_asr_0_6b`, `google_chirp`, `openai_whisper_large_v3`). In-memory cache keeps loaded models fast.
-2. **Audio Input Options:**
-   * **Preloaded Evaluation Samples:** Pick any of the 16 verified audio recordings (`km_eval_0001` - `km_eval_0016`).
-   * **Upload Audio File:** Upload custom `.wav` or `.mp3` files.
-   * **Live Browser Microphone:** Record speech directly through the browser.
-3. **Manual Expected Output (Ground Truth):**
-   * Preloaded samples auto-fill the reference Khmer text, which can be modified.
-   * For custom uploads or mic recordings, users can type or paste the expected Khmer transcription.
+### B. Core Features & Dynamic Dataset Auto-Indexing
+1. **Model Selector:** Switch between all 5 benchmarked models (`meta_mms_1b`, `sengtha_whisper_base_khmer`, `seanghay_qwen3_asr_0_6b`, `google_chirp`, `openai_whisper_large_v3`).
+2. **Dynamic Auto-Indexing (`km_eval_0017...`):**
+   * Automatically scans existing dataset samples and calculates the next available ID (e.g. `km_eval_0017`).
+   * When saving a new audio recording or upload, saves directly into `data/raw_audio/km_eval_XXXX.<ext>`, registers in `data/ground_truth.jsonl`, runs the model, appends the evaluation directly to `results/error_analysis/<model>_cer_breakdown.csv`, and recalculates `results/metrics_summary.csv`.
+   * The sample immediately appears in the **Sample-by-Sample Breakdown** table and increments the total dataset count.
+3. **Sample Deletion & Automatic Decrementing:**
+   * Each row in the **Sample-by-Sample Breakdown** table features a `Delete ✕` button.
+   * Deleting a sample removes the audio file, updates `ground_truth.jsonl`, cleans breakdown CSVs, recalculates the Leaderboard summary, decrements the total count, and frees up the index.
 4. **LIFO Evaluation Stack:**
-   * Each prediction is pushed to the top of the stack (`push`).
-   * Supports `pop` (undo last prediction), `clear`, and `export to CSV` matching the `error_analysis` format.
+   * Stack-based evaluation history with `pop`, `clear`, and CSV export matching the `error_analysis` format.
 5. **Exact Metrics & Character Alignment:**
-   * Computes Substitutions ($S$), Deletions ($D$), Insertions ($I$), Reference Length ($N$), and CER (%).
-   * Renders color-coded character alignment tokens (`match`, `substitution`, `deletion`, `insertion`).
-6. **Benchmark Leaderboard:**
-   * Live consolidated ranking table from `results/metrics_summary.csv`.
-   * Per-model sample-by-sample error analysis modal viewer.
+   * Computes $S, I, D, N$, and CER (%) with color-coded character alignment tokens.
+6. **Benchmark Leaderboard Directory:**
+   * Live consolidated ranking table with interactive sample-by-sample breakdown inspector.
 
 ### C. Launch Instructions
 ```bash
