@@ -1,6 +1,6 @@
 ﻿model_name,total_samples,total_duration_sec,CER (%),avg_latency_sec
-google_chirp,16,230.63,12.96,0.479
-seanghay_qwen3_asr_0_6b,16,230.63,15.31,0.77
-meta_mms_1b,16,230.63,15.9,0.638
-openai_whisper_large_v3,16,230.63,17.79,2.199
-sengtha_whisper_base_khmer,16,230.63,122.61,14.524
+google_chirp,16,230.63,44.08,5.47
+meta_mms_1b,16,230.63,54.31,5.51
+sengtha_whisper_base_khmer,16,230.63,56.26,14.524
+seanghay_qwen3_asr_0_6b,16,230.63,59.39,17.77
+openai_whisper_large_v3,16,230.63,94.08,93.062

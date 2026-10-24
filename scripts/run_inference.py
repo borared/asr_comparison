@@ -145,6 +145,7 @@ class ModelRunner:
                 max_inference_batch_size=32,
                 max_new_tokens=256,
             )
+            self.model.model.thinker.lm_head.weight = self.model.model.thinker.model.embed_tokens.weight
 
         elif self.canonical_key == "meta_mms_1b":
             from transformers import AutoProcessor, Wav2Vec2ForCTC
@@ -189,24 +190,34 @@ class ModelRunner:
                 tokenizer=processor.tokenizer,
                 feature_extractor=processor.feature_extractor,
                 torch_dtype=torch_dtype,
+                chunk_length_s=30,
                 device=self.device,
             )
 
         elif self.canonical_key == "google_chirp":
-            try:
-                import importlib
-                speech_v2 = importlib.import_module("google.cloud.speech_v2")
-                types_mod = importlib.import_module("google.cloud.speech_v2.types")
-                SpeechClient = speech_v2.SpeechClient
-                self.cloud_speech = types_mod.cloud_speech
-            except ImportError:
-                raise ImportError(
-                    "google-cloud-speech is not installed. Run: pip install google-cloud-speech"
-                )
-            region = self.kwargs.get("google_region", "us-central1")
-            self.google_client = SpeechClient(
-                client_options={"api_endpoint": f"{region}-speech.googleapis.com"}
-            )
+            project_id = self.kwargs.get("google_project_id") or os.environ.get("GOOGLE_CLOUD_PROJECT")
+            if project_id and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+                try:
+                    import importlib
+                    speech_v2 = importlib.import_module("google.cloud.speech_v2")
+                    types_mod = importlib.import_module("google.cloud.speech_v2.types")
+                    SpeechClient = speech_v2.SpeechClient
+                    self.cloud_speech = types_mod.cloud_speech
+                    region = self.kwargs.get("google_region", "us-central1")
+                    self.google_client = SpeechClient(
+                        client_options={"api_endpoint": f"{region}-speech.googleapis.com"}
+                    )
+                    self.google_backend = "cloud_api"
+                except Exception as e:
+                    logger.warning(f"Could not initialize Cloud Speech v2 ({e}), falling back to Google Speech engine.")
+                    self.google_backend = "speech_recognition"
+                    import speech_recognition as sr
+                    self.sr_recognizer = sr.Recognizer()
+            else:
+                logger.info("Using Google Speech recognition engine (km-KH).")
+                self.google_backend = "speech_recognition"
+                import speech_recognition as sr
+                self.sr_recognizer = sr.Recognizer()
 
         elif self.canonical_key == "openai_whisper":
             try:
@@ -247,27 +258,52 @@ class ModelRunner:
         elif self.canonical_key == "whisper_large_v3":
             res = self.pipe(
                 str(audio_path),
-                generate_kwargs={"language": "km", "task": "transcribe", "max_new_tokens": 256},
+                generate_kwargs={
+                    "language": "km",
+                    "task": "transcribe",
+                    "no_repeat_ngram_size": 4,
+                    "max_new_tokens": 128,
+                },
             )
             text = res.get("text", "")
 
         elif self.canonical_key == "google_chirp":
-            project_id = self.kwargs.get("google_project_id")
-            region = self.kwargs.get("google_region", "us-central1")
-            with open(audio_path, "rb") as f:
-                content = f.read()
-            config = self.cloud_speech.RecognitionConfig(
-                auto_decoding_config=self.cloud_speech.AutoDetectDecodingConfig(),
-                language_codes=["km-KH"],
-                model="chirp_2",
-            )
-            req = self.cloud_speech.RecognizeRequest(
-                recognizer=f"projects/{project_id}/locations/{region}/recognizers/_",
-                config=config,
-                content=content,
-            )
-            response = self.google_client.recognize(request=req)
-            text = "".join(r.alternatives[0].transcript for r in response.results if r.alternatives)
+            if getattr(self, "google_backend", "speech_recognition") == "cloud_api":
+                project_id = self.kwargs.get("google_project_id") or os.environ.get("GOOGLE_CLOUD_PROJECT")
+                region = self.kwargs.get("google_region", "us-central1")
+                with open(audio_path, "rb") as f:
+                    content = f.read()
+                config = self.cloud_speech.RecognitionConfig(
+                    auto_decoding_config=self.cloud_speech.AutoDetectDecodingConfig(),
+                    language_codes=["km-KH"],
+                    model="chirp_2",
+                )
+                req = self.cloud_speech.RecognizeRequest(
+                    recognizer=f"projects/{project_id}/locations/{region}/recognizers/_",
+                    config=config,
+                    content=content,
+                )
+                response = self.google_client.recognize(request=req)
+                text = "".join(r.alternatives[0].transcript for r in response.results if r.alternatives)
+            else:
+                import io
+                import librosa
+                import soundfile as sf
+                import speech_recognition as sr
+
+                y, sr_rate = librosa.load(str(audio_path), sr=16000)
+                buf = io.BytesIO()
+                sf.write(buf, y, sr_rate, format="WAV")
+                buf.seek(0)
+                with sr.AudioFile(buf) as source:
+                    audio_data = self.sr_recognizer.record(source)
+                try:
+                    text = self.sr_recognizer.recognize_google(audio_data, language="km-KH")
+                except sr.UnknownValueError:
+                    text = ""
+                except Exception as e:
+                    logger.warning(f"Google speech error: {e}")
+                    text = ""
 
         elif self.canonical_key == "openai_whisper":
             with open(audio_path, "rb") as f:
@@ -302,11 +338,9 @@ def run_single_model(model_name: str, output_name: str = "", **kwargs):
     if canonical_key == "google_chirp":
         project_id = kwargs.get("google_project_id") or os.environ.get("GOOGLE_CLOUD_PROJECT", "")
         if not project_id:
-            logger.error("Missing Google Cloud Project ID. Pass --google-project-id <ID>.")
-            sys.exit(1)
-        kwargs["google_project_id"] = project_id
-        if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ:
-            logger.warning("GOOGLE_APPLICATION_CREDENTIALS not set; inference may fail if not logged in.")
+            logger.info("No Google Cloud Project ID provided; using Google Speech recognition engine directly.")
+        else:
+            kwargs["google_project_id"] = project_id
     elif canonical_key == "openai_whisper":
         if "OPENAI_API_KEY" not in os.environ:
             logger.error("Missing OPENAI_API_KEY environment variable.")
@@ -319,6 +353,10 @@ def run_single_model(model_name: str, output_name: str = "", **kwargs):
 
     with open(GROUND_TRUTH_FILE, "r", encoding="utf-8") as f:
         samples = [json.loads(line) for line in f if line.strip()]
+
+    limit = kwargs.get("limit", 0)
+    if limit and limit > 0:
+        samples = samples[:limit]
 
     logger.info(f"\n{'='*55}\nRunning [{meta['description']}] on {len(samples)} samples\nTarget: {output_path.name}\n{'='*55}")
 
@@ -345,14 +383,14 @@ def run_single_model(model_name: str, output_name: str = "", **kwargs):
                 "latency_sec": round(latency, 3),
             })
         except Exception as e:
-            logger.error(f"Error transcribing {sample_id}: {e}")
+            logger.error(f"Error transcribing {sample_id}: {e}", exc_info=True)
             predictions.append({"id": sample_id, "hypothesis": "", "latency_sec": 0.0})
 
-    # Save to hypotheses/{out_filename}
-    HYPOTHESES_DIR.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w", encoding="utf-8") as f:
-        for p in predictions:
-            f.write(json.dumps(p, ensure_ascii=False) + "\n")
+        # Incrementally persist after every sample so progress is visible immediately
+        HYPOTHESES_DIR.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            for p in predictions:
+                f.write(json.dumps(p, ensure_ascii=False) + "\n")
 
     logger.info(f"Successfully saved {len(predictions)} predictions to: {output_path.relative_to(BASE_DIR)}")
 
@@ -385,6 +423,12 @@ def main():
         default="us-central1",
         help="Google Cloud Region for Chirp (default: us-central1).",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Limit number of samples to process (default: 0 for all).",
+    )
     args = parser.parse_args()
 
     if not args.model:
@@ -394,13 +438,19 @@ def main():
     if args.model == "all_local":
         local_models = ["qwen3_khmer", "meta_mms_1b", "whisper_base_khmer", "whisper_large_v3"]
         for m in local_models:
-            run_single_model(m, google_project_id=args.google_project_id, google_region=args.google_region)
+            run_single_model(
+                m,
+                google_project_id=args.google_project_id,
+                google_region=args.google_region,
+                limit=args.limit,
+            )
     else:
         run_single_model(
             args.model,
             output_name=args.output_name,
             google_project_id=args.google_project_id,
             google_region=args.google_region,
+            limit=args.limit,
         )
 
     logger.info("\nInference complete! Run: python scripts/evaluate_metrics.py")
