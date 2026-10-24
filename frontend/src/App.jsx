@@ -14,11 +14,28 @@ export default function App() {
   const [selectedSampleId, setSelectedSampleId] = useState('');
   const [uploadedFile, setUploadedFile] = useState(null);
   const [expectedOutput, setExpectedOutput] = useState('');
+  const [nextSampleId, setNextSampleId] = useState('km_eval_0017');
   const [isLoading, setIsLoading] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
 
   const timerRef = useRef(null);
   const { stack, push, pop, clear, exportToCsv, count } = useAsrStack();
+
+  const fetchDataset = () => {
+    fetch('/api/dataset')
+      .then((res) => res.json())
+      .then((data) => setDatasetSamples(data.samples || []))
+      .catch((err) => console.error('Error fetching dataset:', err));
+
+    fetch('/api/dataset/next-id')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.next_id) {
+          setNextSampleId(data.next_id);
+        }
+      })
+      .catch((err) => console.error('Error fetching next sample id:', err));
+  };
 
   // Fetch models & dataset on mount
   useEffect(() => {
@@ -27,14 +44,11 @@ export default function App() {
       .then((data) => setModels(data.models || []))
       .catch((err) => console.error('Error fetching models:', err));
 
-    fetch('/api/dataset')
-      .then((res) => res.json())
-      .then((data) => setDatasetSamples(data.samples || []))
-      .catch((err) => console.error('Error fetching dataset:', err));
+    fetchDataset();
   }, []);
 
-  // Handle Run Prediction
-  const handleRun = async () => {
+  // Standard Run Prediction (Test & Stack only)
+  const handleRunTest = async () => {
     if (!uploadedFile && !selectedSampleId) {
       alert('Please upload an audio file or select a preloaded sample.');
       return;
@@ -68,7 +82,6 @@ export default function App() {
       }
 
       const result = await response.json();
-      // Push prediction result onto the Stack
       push(result);
     } catch (err) {
       console.error('Prediction Error:', err);
@@ -79,65 +92,131 @@ export default function App() {
     }
   };
 
+  // Save to Benchmark Dataset & Evaluate directly into Breakdown & Leaderboard
+  const handleSaveBenchmarkSample = async () => {
+    if (!uploadedFile) {
+      alert('Please upload an audio file or record microphone audio first.');
+      return;
+    }
+    if (!expectedOutput || !expectedOutput.trim()) {
+      const proceed = window.confirm(
+        'You have not entered any Expected Output (Ground Truth Reference). Proceed with empty reference?'
+      );
+      if (!proceed) return;
+    }
+
+    setIsLoading(true);
+    setElapsedSec(0);
+    timerRef.current = setInterval(() => {
+      setElapsedSec((prev) => prev + 1);
+    }, 1000);
+
+    const formData = new FormData();
+    formData.append('model_name', selectedModel);
+    formData.append('expected_output', expectedOutput || '');
+    formData.append('file', uploadedFile);
+
+    try {
+      const response = await fetch('/api/dataset/create-sample', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to create dataset sample');
+      }
+
+      const result = await response.json();
+      // Push result to stack
+      push(result);
+      // Refresh dataset and next ID
+      fetchDataset();
+      // Reset input file
+      setUploadedFile(null);
+      alert(
+        `Successfully saved sample as ${result.id}!\n\nStored in data/raw_audio/, registered in ground_truth.jsonl, and added directly to the ${selectedModel} Sample-by-Sample Breakdown.`
+      );
+    } catch (err) {
+      console.error('Create Dataset Error:', err);
+      alert('Error saving benchmark sample: ' + err.message);
+    } finally {
+      setIsLoading(false);
+      clearInterval(timerRef.current);
+    }
+  };
+
   return (
     <div className="app-container">
-      {/* Top Navbar */}
+      {/* Editorial Header */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         stackCount={count}
       />
 
-      {/* View Tabs */}
+      {/* Editorial Hero Banner */}
+      <section className="editorial-hero-banner">
+        <div className="hero-left">
+          <h2>KHMER SPEECH EVALUATION STUDIO</h2>
+          <p>
+            Standardized Character Error Rate (CER %) benchmarking and live prediction analysis 
+            for conversational Khmer speech across 5 contemporary ASR models.
+          </p>
+        </div>
+
+        <div className="hero-tags">
+          <div className="hero-tag-item">● {datasetSamples.length} BENCHMARK SAMPLES</div>
+          <div className="hero-tag-item">● NEXT INDEX: {nextSampleId}</div>
+          <div className="hero-tag-item">● ZERO-WIDTH NFC NORMALIZED</div>
+        </div>
+      </section>
+
+      {/* Active Tab View */}
       {activeTab === 'studio' ? (
-        <div className="main-grid">
-          {/* Left Column: Model Selection & Audio Input with Manual Expected Text */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* Model Selector Card */}
-            <div className="glass-card">
-              <ModelSelector
-                models={models}
-                selectedModel={selectedModel}
-                setSelectedModel={setSelectedModel}
-              />
-            </div>
-
-            {/* Audio Upload, Recording & Manual Expected Output Card */}
-            <div className="glass-card">
-              <div className="panel-header">
-                <h2 className="panel-title">Audio & Expected Output</h2>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
-                  Step 2 & 3
-                </span>
-              </div>
-              <AudioInputCard
-                datasetSamples={datasetSamples}
-                selectedSampleId={selectedSampleId}
-                setSelectedSampleId={setSelectedSampleId}
-                uploadedFile={uploadedFile}
-                setUploadedFile={setUploadedFile}
-                expectedOutput={expectedOutput}
-                setExpectedOutput={setExpectedOutput}
-                onRun={handleRun}
-                isLoading={isLoading}
-                elapsedSec={elapsedSec}
-              />
-            </div>
-          </div>
-
-          {/* Right Column: LIFO Evaluation Stack (Pop & Push) */}
-          <div>
-            <StackManager
-              stack={stack}
-              onPop={pop}
-              onClear={clear}
-              onExport={exportToCsv}
+        <main className="studio-vertical-flow">
+          {/* 1. Model Architecture */}
+          <div className="bento-card">
+            <ModelSelector
+              models={models}
+              selectedModel={selectedModel}
+              setSelectedModel={setSelectedModel}
             />
           </div>
-        </div>
+
+          {/* 2. Audio & Expected Output */}
+          <div className="bento-card">
+            <div className="bento-header">
+              <h2 className="bento-title">Audio & Expected Output</h2>
+              <span className="bento-tag">Step 02 / 03</span>
+            </div>
+            <AudioInputCard
+              datasetSamples={datasetSamples}
+              selectedSampleId={selectedSampleId}
+              setSelectedSampleId={setSelectedSampleId}
+              uploadedFile={uploadedFile}
+              setUploadedFile={setUploadedFile}
+              expectedOutput={expectedOutput}
+              setExpectedOutput={setExpectedOutput}
+              onRunTest={handleRunTest}
+              onSaveBenchmarkSample={handleSaveBenchmarkSample}
+              isLoading={isLoading}
+              elapsedSec={elapsedSec}
+              nextSampleId={nextSampleId}
+            />
+          </div>
+
+          {/* 3. LIFO Evaluation Stack */}
+          <StackManager
+            stack={stack}
+            onPop={pop}
+            onClear={clear}
+            onExport={exportToCsv}
+          />
+        </main>
       ) : (
-        /* Leaderboard Tab */
-        <MetricsLeaderboard />
+        /* Benchmark Leaderboard & Breakdown View */
+        <MetricsLeaderboard onDatasetChanged={fetchDataset} />
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Mic, Square, Play, RotateCcw, FileAudio, Sparkles, Loader2 } from 'lucide-react';
+import { Upload, Mic, Square, FileAudio, ArrowRight, Loader2, Sparkles, Volume2, PlusCircle, Play } from 'lucide-react';
 
 export default function AudioInputCard({
   datasetSamples,
@@ -9,10 +9,13 @@ export default function AudioInputCard({
   setUploadedFile,
   expectedOutput,
   setExpectedOutput,
-  onRun,
+  onRunTest,
+  onSaveBenchmarkSample,
   isLoading,
   elapsedSec,
+  nextSampleId,
 }) {
+  const [inputMode, setInputMode] = useState('preloaded'); // 'preloaded' | 'upload' | 'mic'
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioPreviewUrl, setAudioPreviewUrl] = useState(null);
@@ -21,7 +24,7 @@ export default function AudioInputCard({
   const timerRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // When preloaded sample is selected from dropdown
+  // When preloaded sample is picked
   const handleSampleChange = (e) => {
     const id = e.target.value;
     setSelectedSampleId(id);
@@ -37,7 +40,7 @@ export default function AudioInputCard({
     }
   };
 
-  // When a local file is uploaded
+  // When a local file is picked
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -99,7 +102,7 @@ export default function AudioInputCard({
         setRecordingTime((prev) => prev + 1);
       }, 1000);
     } catch (err) {
-      alert('Microphone access denied or unavailable: ' + err.message);
+      alert('Microphone access denied: ' + err.message);
     }
   };
 
@@ -111,7 +114,6 @@ export default function AudioInputCard({
     }
   };
 
-  // Format seconds to mm:ss
   const formatTime = (sec) => {
     const m = Math.floor(sec / 60);
     const s = sec % 60;
@@ -119,132 +121,234 @@ export default function AudioInputCard({
   };
 
   const hasAudio = !!uploadedFile || !!selectedSampleId;
+  const canSaveBenchmark = !!uploadedFile;
 
   return (
-    <div className="input-section">
-      {/* 1. Preloaded Dataset Selector */}
+    <div className="input-block">
+      {/* 01. Audio Source Mode Switcher */}
       <div>
-        <label className="input-label">1. Choose Preloaded Audio Sample (Optional)</label>
-        <select
-          className="select-input"
-          value={selectedSampleId}
-          onChange={handleSampleChange}
-          disabled={isLoading}
-        >
-          <option value="">-- Or select from 16 benchmark samples --</option>
-          {datasetSamples.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.id} ({s.audio_filename} — {s.duration_sec}s) :{' '}
-              {s.reference.slice(0, 35)}...
-            </option>
-          ))}
-        </select>
-      </div>
+        <div className="field-label-row">
+          <label className="field-label">01. Audio Input Source</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span
+              className="tab-counter-pill"
+              style={{ background: 'var(--card-warm)', color: 'var(--ink-black)' }}
+            >
+              NEXT INDEX: {nextSampleId || 'km_eval_0017'}
+            </span>
+          </div>
+        </div>
 
-      {/* 2. Drag & Drop File Upload or Mic Recording */}
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <label className="input-label">2. Upload Audio or Record Voice</label>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className={`tactile-pill-btn ${inputMode === 'preloaded' ? 'active' : ''}`}
+            style={{
+              background: inputMode === 'preloaded' ? 'var(--ink-black)' : '#FFFFFF',
+              color: inputMode === 'preloaded' ? '#FFFFFF' : 'var(--ink-black)',
+            }}
+            onClick={() => setInputMode('preloaded')}
+          >
+            Preloaded Samples ({datasetSamples.length})
+          </button>
+          <button
+            type="button"
+            className={`tactile-pill-btn ${inputMode === 'upload' ? 'active' : ''}`}
+            style={{
+              background: inputMode === 'upload' ? 'var(--ink-black)' : '#FFFFFF',
+              color: inputMode === 'upload' ? '#FFFFFF' : 'var(--ink-black)',
+            }}
+            onClick={() => setInputMode('upload')}
+          >
+            Upload File (.wav/.mp3)
+          </button>
+          <button
+            type="button"
+            className={`tactile-pill-btn ${inputMode === 'mic' ? 'active' : ''}`}
+            style={{
+              background: inputMode === 'mic' ? 'var(--ink-black)' : '#FFFFFF',
+              color: inputMode === 'mic' ? '#FFFFFF' : 'var(--ink-black)',
+            }}
+            onClick={() => setInputMode('mic')}
+          >
+            Record Mic
+          </button>
+        </div>
+
+        {/* Option A: Preloaded Samples */}
+        {inputMode === 'preloaded' && (
+          <div>
+            <select
+              className="editorial-select"
+              value={selectedSampleId}
+              onChange={handleSampleChange}
+              disabled={isLoading}
+            >
+              <option value="">-- Choose from {datasetSamples.length} verified evaluation samples --</option>
+              {datasetSamples.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.id} ({s.audio_filename} — {s.duration_sec}s) : {s.reference ? s.reference.slice(0, 40) + '...' : '(No reference)'}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Option B: File Upload */}
+        {inputMode === 'upload' && (
+          <div
+            className={`dropzone-bento ${isDragging ? 'drag-active' : ''}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <input
+              type="file"
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+              accept=".wav,.mp3,audio/wav,audio/mpeg"
+              onChange={handleFileChange}
+              disabled={isLoading}
+            />
+            <div className="dropzone-icon-box">
+              <Upload size={20} color="var(--accent-cobalt)" />
+            </div>
+            <div className="dropzone-primary-text">
+              {uploadedFile ? uploadedFile.name : 'Click or drag .wav / .mp3 audio file'}
+            </div>
+            <div className="dropzone-sub-text">
+              {uploadedFile
+                ? `${(uploadedFile.size / 1024 / 1024).toFixed(2)} MB file ready`
+                : `Will auto-assign index: ${nextSampleId || 'km_eval_0017'}`}
+            </div>
+          </div>
+        )}
+
+        {/* Option C: Live Microphone */}
+        {inputMode === 'mic' && (
+          <div className="dropzone-bento" style={{ padding: '28px' }}>
             {!isRecording ? (
               <button
                 type="button"
-                className="btn-secondary"
+                className="tactile-pill-btn"
+                style={{
+                  background: '#DC2626',
+                  color: '#FFFFFF',
+                  margin: '0 auto',
+                  padding: '10px 20px',
+                  fontSize: '0.9rem',
+                }}
                 onClick={startRecording}
                 disabled={isLoading}
               >
-                <Mic size={14} color="#ef4444" />
-                Record Mic
+                <Mic size={16} />
+                Start Recording Microphone
               </button>
             ) : (
               <button
                 type="button"
-                className="btn-danger-outline"
+                className="tactile-pill-btn"
+                style={{
+                  background: '#B91C1C',
+                  color: '#FFFFFF',
+                  margin: '0 auto',
+                  padding: '10px 20px',
+                  fontSize: '0.9rem',
+                }}
                 onClick={stopRecording}
               >
-                <Square size={14} fill="#ef4444" />
-                Stop ({formatTime(recordingTime)})
+                <Square size={16} fill="#FFFFFF" />
+                Stop Recording ({formatTime(recordingTime)})
               </button>
             )}
+            <div className="dropzone-sub-text" style={{ marginTop: '10px' }}>
+              {isRecording
+                ? 'Listening to microphone...'
+                : `Recorded speech will auto-assign index: ${nextSampleId || 'km_eval_0017'}`}
+            </div>
           </div>
-        </div>
-
-        <div
-          className={`dropzone ${isDragging ? 'drag-active' : ''}`}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <input
-            type="file"
-            ref={fileInputRef}
-            style={{ display: 'none' }}
-            accept=".wav,.mp3,audio/wav,audio/mpeg"
-            onChange={handleFileChange}
-            disabled={isLoading}
-          />
-          <div className="dropzone-icon">
-            <Upload size={22} />
-          </div>
-          <div className="dropzone-title">
-            {uploadedFile
-              ? uploadedFile.name
-              : 'Click or drop .wav / .mp3 audio file here'}
-          </div>
-          <div className="dropzone-desc">
-            {uploadedFile
-              ? `${(uploadedFile.size / 1024 / 1024).toFixed(2)} MB uploaded`
-              : 'Supports 16kHz/44.1kHz WAV and MP3 recordings'}
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Audio Preview Widget */}
+      {/* Audio Playback Bar */}
       {audioPreviewUrl && (
-        <div className="audio-widget">
-          <FileAudio size={16} color="var(--primary)" />
-          <audio controls src={audioPreviewUrl} style={{ width: '100%' }} />
+        <div className="audio-player-strip">
+          <Volume2 size={18} color="var(--accent-cobalt)" />
+          <audio controls src={audioPreviewUrl} style={{ width: '100%', height: '32px' }} />
         </div>
       )}
 
-      {/* 3. Expected Output Field (Manual Ground Truth) */}
+      {/* 02. Expected Output (Ground Truth Khmer Reference) */}
       <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <label className="input-label">
-            3. Expected Output (Ground Truth Khmer Reference)
-          </label>
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
-            Used to calculate exact CER (%)
+        <div className="field-label-row">
+          <label className="field-label">02. Expected Output (Ground Truth Reference)</label>
+          <span className="field-hint">
+            {expectedOutput ? `${expectedOutput.length} characters` : 'Manual or Auto-filled'}
           </span>
         </div>
         <textarea
-          className="textarea-input"
-          placeholder="បញ្ចូលអត្ថបទគំរូ ឬអត្ថបទពិតប្រាកដដែលបាននិយាយ (Type or paste the true spoken Khmer sentence here)..."
+          className="editorial-textarea"
+          placeholder="បញ្ចូលអត្ថបទគំរូពិតប្រាកដដែលបាននិយាយ (Type or paste the expected spoken Khmer text here)..."
           value={expectedOutput}
           onChange={(e) => setExpectedOutput(e.target.value)}
           disabled={isLoading}
         />
       </div>
 
-      {/* 4. Run Button */}
-      <button
-        className="btn-primary"
-        onClick={onRun}
-        disabled={isLoading || !hasAudio}
-      >
-        {isLoading ? (
-          <>
-            <Loader2 size={18} className="animate-spin" />
-            Transcribing with Model... ({elapsedSec}s)
-          </>
-        ) : (
-          <>
-            <Sparkles size={18} />
-            Run Model Prediction & Push to Stack
-          </>
+      {/* 03. Action Buttons: Benchmark Dataset Creation vs Temporary Stack Test */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {/* Button A: Store Directly into Dataset & Breakdown */}
+        {canSaveBenchmark && (
+          <button
+            type="button"
+            className="btn-mogo-run"
+            style={{
+              background: 'var(--accent-cobalt)',
+              color: '#FFFFFF',
+              borderColor: 'var(--ink-black)',
+            }}
+            onClick={onSaveBenchmarkSample}
+            disabled={isLoading || !uploadedFile}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                Storing into Dataset & Evaluating Model... ({elapsedSec}s)
+              </>
+            ) : (
+              <>
+                <PlusCircle size={18} />
+                <span>
+                  Save to Benchmark Dataset & Breakdown (as {nextSampleId || 'km_eval_0017'})
+                </span>
+                <ArrowRight size={18} strokeWidth={2.5} />
+              </>
+            )}
+          </button>
         )}
-      </button>
+
+        {/* Button B: Standard Prediction & Stack Push (Always available) */}
+        <button
+          type="button"
+          className="btn-mogo-run"
+          onClick={onRunTest}
+          disabled={isLoading || !hasAudio}
+        >
+          {isLoading && !canSaveBenchmark ? (
+            <>
+              <Loader2 size={18} className="animate-spin" />
+              Evaluating Audio with Model... ({elapsedSec}s)
+            </>
+          ) : (
+            <>
+              <Play size={16} fill="currentColor" />
+              <span>Run Model Prediction & Push to Stack</span>
+              <ArrowRight size={18} strokeWidth={2.5} />
+            </>
+          )}
+        </button>
+      </div>
     </div>
   );
 }

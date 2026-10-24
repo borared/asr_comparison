@@ -1,47 +1,53 @@
 import React from 'react';
-import { Mic, BarChart3, Layers, Sparkles } from 'lucide-react';
+import { Layers, BarChart3, Radio } from 'lucide-react';
 
 export default function Navbar({ activeTab, setActiveTab, stackCount }) {
   return (
-    <nav className="glass-card navbar">
-      <div className="nav-brand">
-        <div className="brand-icon">
-          <Mic size={22} />
+    <header className="editorial-header">
+      {/* Brand Wordmark (Inspired by Dsgners®) */}
+      <div className="brand-section">
+        <div className="brand-badge">
+          <span>KM</span>
         </div>
-        <div>
-          <h1 className="brand-title">Khmer ASR Studio</h1>
-          <p className="brand-subtitle">Benchmark & Interactive Model Evaluator</p>
+        <div className="brand-text-block">
+          <h1>
+            KHMER ASR <span className="brand-reg">®</span>
+          </h1>
+          <div className="brand-sublabel">Speech Evaluation Platform</div>
         </div>
       </div>
 
-      <div className="nav-tabs">
+      {/* Segmented Editorial Pill Tabs */}
+      <div className="nav-tab-deck">
         <button
-          className={`nav-tab-btn ${activeTab === 'studio' ? 'active' : ''}`}
+          className={`editorial-tab-btn ${activeTab === 'studio' ? 'active' : ''}`}
           onClick={() => setActiveTab('studio')}
         >
-          <Layers size={16} />
-          Evaluation Studio
+          <Layers size={15} />
+          01. Studio & Stack
           {stackCount > 0 && (
-            <span
-              style={{
-                background: 'rgba(255,255,255,0.2)',
-                borderRadius: '999px',
-                padding: '1px 6px',
-                fontSize: '0.7rem',
-              }}
-            >
-              {stackCount}
-            </span>
+            <span className="tab-counter-pill">{stackCount}</span>
           )}
         </button>
         <button
-          className={`nav-tab-btn ${activeTab === 'leaderboard' ? 'active' : ''}`}
+          className={`editorial-tab-btn ${activeTab === 'leaderboard' ? 'active' : ''}`}
           onClick={() => setActiveTab('leaderboard')}
         >
-          <BarChart3 size={16} />
-          Leaderboard & Metrics
+          <BarChart3 size={15} />
+          02. Benchmark Directory
         </button>
       </div>
-    </nav>
+
+      {/* Status & Session Tags */}
+      <div className="header-meta-group">
+        <div className="status-pill">
+          <span className="status-indicator-dot" />
+          <span>API: ONLINE</span>
+        </div>
+        <div className="status-pill" style={{ display: 'none', md: 'inline-flex' }}>
+          <span>16 SAMPLES</span>
+        </div>
+      </div>
+    </header>
   );
 }

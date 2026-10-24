@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, BarChart2, CheckCircle2, ChevronRight, FileText } from 'lucide-react';
+import { Trophy, FileText, ChevronRight, BarChart2, Trash2 } from 'lucide-react';
 
-export default function MetricsLeaderboard() {
+export default function MetricsLeaderboard({ onDatasetChanged }) {
   const [metrics, setMetrics] = useState({ summary: [], breakdowns: {} });
   const [selectedBreakdown, setSelectedBreakdown] = useState('meta_mms_1b');
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState(null);
 
-  useEffect(() => {
+  const fetchMetrics = () => {
     fetch('/api/metrics')
       .then((res) => res.json())
       .then((data) => {
@@ -17,7 +18,37 @@ export default function MetricsLeaderboard() {
         console.error('Failed to load metrics:', err);
         setLoading(false);
       });
+  };
+
+  useEffect(() => {
+    fetchMetrics();
   }, []);
+
+  const handleDeleteSample = async (sampleId) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete ${sampleId} from the benchmark dataset?\n\nThis will remove its audio, ground truth reference, and recalculate all model CER metrics.`
+    );
+    if (!confirmed) return;
+
+    setDeletingId(sampleId);
+    try {
+      const res = await fetch(`/api/dataset/delete-sample/${sampleId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        throw new Error('Failed to delete sample from server.');
+      }
+      // Refresh local metrics table and notify parent
+      fetchMetrics();
+      if (onDatasetChanged) {
+        onDatasetChanged();
+      }
+    } catch (err) {
+      alert('Error deleting sample: ' + err.message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const getRankBadge = (idx) => {
     if (idx === 0) return '🥇 1st';
@@ -26,10 +57,10 @@ export default function MetricsLeaderboard() {
     return `#${idx + 1}`;
   };
 
-  const getCerColor = (cer) => {
-    if (cer <= 50) return '#34d399';
-    if (cer <= 65) return '#fbbf24';
-    return '#f87171';
+  const getCerPillClass = (cer) => {
+    if (cer <= 50) return 'cer-good';
+    if (cer <= 70) return 'cer-mid';
+    return 'cer-high';
   };
 
   const activeBreakdown = metrics.breakdowns[selectedBreakdown] || [];
@@ -37,147 +68,145 @@ export default function MetricsLeaderboard() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       {/* 1. Leaderboard Table Card */}
-      <div className="glass-card">
-        <div className="panel-header">
-          <h2 className="panel-title">
-            <Trophy size={18} color="#eab308" />
-            Standardized Khmer ASR Benchmark Leaderboard
-          </h2>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>
-            16 Evaluated Samples (230.63s) • Metric: CER (%)
+      <div className="bento-card">
+        <div className="bento-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Trophy size={20} color="var(--accent-yellow)" />
+            <h2 className="bento-title">Consolidated Benchmark Directory</h2>
+          </div>
+          <span className="bento-tag">
+            {metrics.summary.length > 0 ? `${metrics.summary[0].total_samples} Verified Samples` : 'Benchmark Samples'}
           </span>
         </div>
 
-        <div className="table-container">
-          <table className="metrics-table">
+        <div className="editorial-table-container">
+          <table className="editorial-table">
             <thead>
               <tr>
                 <th>Rank</th>
                 <th>Model Identifier</th>
                 <th>Type</th>
                 <th>Samples</th>
-                <th>Audio (s)</th>
+                <th>Duration</th>
                 <th>CER (%)</th>
-                <th>Avg Latency (s)</th>
-                <th>Inspect</th>
+                <th>Avg Latency</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {metrics.summary.map((row, idx) => (
-                <tr
-                  key={row.model_name}
-                  style={{
-                    background:
-                      selectedBreakdown === row.model_name
-                        ? 'rgba(99, 102, 241, 0.08)'
-                        : 'transparent',
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => setSelectedBreakdown(row.model_name)}
-                >
-                  <td style={{ fontWeight: '700' }}>{getRankBadge(idx)}</td>
-                  <td>
-                    <strong>{row.model_name}</strong>
-                  </td>
-                  <td>
-                    <span
-                      className="model-tag"
-                      style={{
-                        background: row.model_name.includes('google')
-                          ? 'rgba(6,182,212,0.2)'
-                          : 'rgba(99,102,241,0.2)',
-                        color: row.model_name.includes('google') ? '#22d3ee' : '#818cf8',
-                      }}
-                    >
-                      {row.model_name.includes('google') ? 'Cloud API' : 'Open-Source'}
-                    </span>
-                  </td>
-                  <td>{row.total_samples}</td>
-                  <td>{row.total_duration_sec}s</td>
-                  <td>
-                    <strong style={{ color: getCerColor(row['CER (%)']), fontSize: '1rem' }}>
-                      {row['CER (%)']}%
-                    </strong>
-                  </td>
-                  <td>{row.avg_latency_sec}s</td>
-                  <td>
-                    <button
-                      className="btn-secondary"
-                      style={{ padding: '4px 8px', fontSize: '0.72rem' }}
-                    >
-                      View Breakdown <ChevronRight size={12} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {metrics.summary.map((row, idx) => {
+                const isSelected = selectedBreakdown === row.model_name;
+                return (
+                  <tr
+                    key={row.model_name}
+                    className={isSelected ? 'selected-row' : ''}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => setSelectedBreakdown(row.model_name)}
+                  >
+                    <td className="rank-badge-cell">{getRankBadge(idx)}</td>
+                    <td>
+                      <strong style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem' }}>
+                        {row.model_name}
+                      </strong>
+                    </td>
+                    <td>
+                      <span className="model-type-tag">
+                        {row.model_name.includes('google') ? 'Cloud API' : 'Open-Source'}
+                      </span>
+                    </td>
+                    <td style={{ fontFamily: 'var(--font-mono)' }}>{row.total_samples}</td>
+                    <td style={{ fontFamily: 'var(--font-mono)' }}>{row.total_duration_sec}s</td>
+                    <td>
+                      <span className={`cer-pill ${getCerPillClass(row['CER (%)'])}`}>
+                        {row['CER (%)']}%
+                      </span>
+                    </td>
+                    <td style={{ fontFamily: 'var(--font-mono)' }}>{row.avg_latency_sec}s</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="tactile-pill-btn"
+                        style={{ padding: '4px 10px', fontSize: '0.72rem' }}
+                      >
+                        Inspect Breakdown <ChevronRight size={12} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* 2. Model Breakdown Detail Table */}
-      <div className="glass-card">
-        <div className="panel-header">
+      {/* 2. Model Breakdown Detail Table with Sample Deletion */}
+      <div className="bento-card">
+        <div className="bento-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <FileText size={18} color="var(--primary)" />
-            <h3 style={{ fontSize: '0.95rem', fontWeight: '700' }}>
-              Error Breakdown for: <span style={{ color: '#818cf8' }}>{selectedBreakdown}</span>
+            <FileText size={20} color="var(--accent-cobalt)" />
+            <h3 className="bento-title">
+              Sample-by-Sample Breakdown:{' '}
+              <span style={{ color: 'var(--accent-cobalt)' }}>{selectedBreakdown}</span>
             </h3>
           </div>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>
-            Showing {activeBreakdown.length} Sentence Evaluations
-          </span>
+          <span className="bento-tag">{activeBreakdown.length} Evaluations</span>
         </div>
 
-        <div className="table-container" style={{ maxHeight: '520px', overflowY: 'auto' }}>
-          <table className="metrics-table">
+        <div className="editorial-table-container" style={{ maxHeight: '520px', overflowY: 'auto' }}>
+          <table className="editorial-table">
             <thead>
               <tr>
-                <th style={{ width: '100px' }}>ID</th>
+                <th style={{ width: '110px' }}>Sample ID</th>
                 <th style={{ minWidth: '220px' }}>Reference (Ground Truth)</th>
                 <th style={{ minWidth: '220px' }}>Hypothesis (Model Output)</th>
                 <th>S</th>
                 <th>I</th>
                 <th>D</th>
-                <th>Sample CER</th>
+                <th>CER</th>
                 <th>Latency</th>
+                <th style={{ width: '80px', textAlign: 'center' }}>Manage</th>
               </tr>
             </thead>
             <tbody>
               {activeBreakdown.map((row) => (
                 <tr key={row.id}>
-                  <td style={{ fontWeight: '600', color: 'var(--text-dim)' }}>{row.id}</td>
-                  <td className="khmer-text" style={{ fontSize: '0.88rem' }}>
+                  <td style={{ fontFamily: 'var(--font-mono)', fontWeight: '700', color: 'var(--ink-muted)' }}>
+                    {row.id}
+                  </td>
+                  <td className="khmer-text" style={{ fontSize: '0.92rem' }}>
                     {row.reference_raw || '(None)'}
                   </td>
-                  <td className="khmer-text" style={{ fontSize: '0.88rem', color: '#cbd5e1' }}>
+                  <td className="khmer-text" style={{ fontSize: '0.92rem', color: 'var(--ink-secondary)' }}>
                     {row.hypothesis_raw || '(Empty)'}
                   </td>
-                  <td style={{ color: '#fde68a' }}>{row.substitutions}</td>
-                  <td style={{ color: '#fca5a5' }}>{row.insertions}</td>
-                  <td style={{ color: '#c7d2fe' }}>{row.deletions}</td>
+                  <td style={{ color: '#854D0E', fontFamily: 'var(--font-mono)', fontWeight: '700' }}>
+                    {row.substitutions}
+                  </td>
+                  <td style={{ color: '#0369A1', fontFamily: 'var(--font-mono)', fontWeight: '700' }}>
+                    {row.insertions}
+                  </td>
+                  <td style={{ color: '#9F1239', fontFamily: 'var(--font-mono)', fontWeight: '700' }}>
+                    {row.deletions}
+                  </td>
                   <td>
-                    <span
-                      className="badge"
-                      style={{
-                        background:
-                          row.sample_cer_pct <= 30
-                            ? 'var(--success-bg)'
-                            : row.sample_cer_pct <= 60
-                            ? 'var(--warning-bg)'
-                            : 'var(--danger-bg)',
-                        color:
-                          row.sample_cer_pct <= 30
-                            ? '#34d399'
-                            : row.sample_cer_pct <= 60
-                            ? '#fbbf24'
-                            : '#f87171',
-                      }}
-                    >
+                    <span className={`cer-pill ${getCerPillClass(row.sample_cer_pct)}`}>
                       {row.sample_cer_pct}%
                     </span>
                   </td>
-                  <td>{row.latency_sec}s</td>
+                  <td style={{ fontFamily: 'var(--font-mono)' }}>{row.latency_sec}s</td>
+                  <td style={{ textAlign: 'center' }}>
+                    <button
+                      type="button"
+                      className="tactile-pill-btn danger-btn"
+                      style={{ padding: '3px 8px', fontSize: '0.7rem' }}
+                      onClick={() => handleDeleteSample(row.id)}
+                      disabled={deletingId === row.id}
+                      title={`Delete ${row.id} from dataset`}
+                    >
+                      <Trash2 size={11} />
+                      {deletingId === row.id ? '...' : 'Delete'}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
