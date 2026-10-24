@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Mic, Square, FileAudio, ArrowRight, Loader2, Play, PlusCircle, Volume2, CheckCircle2 } from 'lucide-react';
+import { Upload, Mic, Square, FileAudio, ArrowRight, Loader2, Play, PlusCircle, Volume2, CheckCircle2, Trash2 } from 'lucide-react';
 
 export default function AudioInputCard({
   datasetSamples,
@@ -11,6 +11,7 @@ export default function AudioInputCard({
   setExpectedOutput,
   onRunTest,
   onSaveBenchmarkSample,
+  onDeleteSample,
   isLoading,
   elapsedSec,
   nextSampleId,
@@ -21,6 +22,7 @@ export default function AudioInputCard({
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioPreviewUrl, setAudioPreviewUrl] = useState(null);
+  const [confirmDeleteSample, setConfirmDeleteSample] = useState(false);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const timerRef = useRef(null);
@@ -192,12 +194,16 @@ export default function AudioInputCard({
 
         {/* Option A: Preloaded Samples */}
         {inputMode === 'preloaded' && (
-          <div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <select
               className="editorial-select"
               value={selectedSampleId}
-              onChange={handleSampleChange}
+              onChange={(e) => {
+                handleSampleChange(e);
+                setConfirmDeleteSample(false);
+              }}
               disabled={isLoading}
+              style={{ flex: 1 }}
             >
               <option value="">-- Choose from {datasetSamples.length} verified evaluation samples --</option>
               {datasetSamples.map((s) => (
@@ -206,6 +212,62 @@ export default function AudioInputCard({
                 </option>
               ))}
             </select>
+
+            {selectedSampleId && (
+              confirmDeleteSample ? (
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    type="button"
+                    className="tactile-pill-btn"
+                    style={{
+                      background: '#DC2626',
+                      color: '#FFFFFF',
+                      borderColor: '#991B1B',
+                      padding: '8px 12px',
+                      fontSize: '0.8rem',
+                      fontWeight: '700',
+                      whiteSpace: 'nowrap',
+                    }}
+                    onClick={() => {
+                      if (onDeleteSample) onDeleteSample(selectedSampleId);
+                      setConfirmDeleteSample(false);
+                    }}
+                    title={`Confirm deletion of ${selectedSampleId}`}
+                  >
+                    Confirm Delete?
+                  </button>
+                  <button
+                    type="button"
+                    className="tactile-pill-btn"
+                    style={{
+                      background: '#F1F5F9',
+                      color: '#475569',
+                      padding: '8px 10px',
+                    }}
+                    onClick={() => setConfirmDeleteSample(false)}
+                    title="Cancel"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="tactile-pill-btn danger-btn"
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: '0.8rem',
+                    whiteSpace: 'nowrap',
+                  }}
+                  onClick={() => setConfirmDeleteSample(true)}
+                  disabled={isLoading}
+                  title={`Delete ${selectedSampleId} from dataset`}
+                >
+                  <Trash2 size={14} />
+                  <span>Delete Sample</span>
+                </button>
+              )
+            )}
           </div>
         )}
 

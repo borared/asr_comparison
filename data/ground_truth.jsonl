@@ -14,5 +14,3 @@
 {"id": "km_eval_0014", "audio_path": "data/raw_audio/km_eval_0014.mp3", "duration": 14.76, "reference": "ខ្ញុំ អ្នក នាង លោក លោកស្រី អ្នកនាង កញ្ញា លោកប្រុស លោកសង្ឃ ព្រះតេជគុណ"}
 {"id": "km_eval_0015", "audio_path": "data/raw_audio/km_eval_0015.mp3", "duration": 9.89, "reference": "ខ្ញុំ អ្នក គាត់ យើង នាង ពួកគេ ពួកខ្ញុំ ពួកគាត់ ពួកយើង"}
 {"id": "km_eval_0016", "audio_path": "data/raw_audio/km_eval_0016.mp3", "duration": 21.62, "reference": "ចន្ទ អង្គារ ពុធ ព្រហស្បតិ៍ សុក្រ សៅរ៍ អាទិត្យ មករា កុម្ភៈ មីនា មេសា ឧសភា មិថុនា កក្កដា សីហា កញ្ញា តុលា វិច្ឆិកា ធ្នូ"}
-{"id": "km_eval_0017", "audio_path": "data/raw_audio/km_eval_0017.wav", "duration": 8.1, "reference": "អាឡូបង បងចង់កម្មង់កាហ្វេទឹកដោះគោមួយកែវ"}
-{"id": "km_eval_0018", "audio_path": "data/raw_audio/km_eval_0018.wav", "duration": 6.6, "reference": "អាឡូបង ខ្ញុំចង់កម្មង់កាហ្វេទឹកដោះគោមួយកែវ"}

@@ -145,6 +145,25 @@ export default function App() {
     }
   };
 
+  const handleDeleteSample = async (sampleId) => {
+    try {
+      const res = await fetch(`/api/dataset/delete-sample/${sampleId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        throw new Error('Failed to delete sample from server.');
+      }
+      if (selectedSampleId === sampleId) {
+        setSelectedSampleId('');
+        setExpectedOutput('');
+        setLastPrediction(null);
+      }
+      fetchDataset();
+    } catch (err) {
+      alert('Error deleting sample: ' + err.message);
+    }
+  };
+
   return (
     <div className="app-container">
       {/* Editorial Header */}
@@ -202,6 +221,7 @@ export default function App() {
               setExpectedOutput={setExpectedOutput}
               onRunTest={handleRunTest}
               onSaveBenchmarkSample={handleSaveBenchmarkSample}
+              onDeleteSample={handleDeleteSample}
               isLoading={isLoading}
               elapsedSec={elapsedSec}
               nextSampleId={nextSampleId}

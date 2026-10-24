@@ -355,6 +355,56 @@ def get_metrics_summary():
     return {"summary": summary_data, "breakdowns": breakdowns}
 
 
+@app.get("/api/dataset/sample-detail/{model_name}/{sample_id}")
+def get_sample_detail(model_name: str, sample_id: str):
+    """
+    Returns full evaluation details for a specific sample and model,
+    including audio URL and character-level alignment diff tokens.
+    """
+    import pandas as pd
+    breakdown_file = ERROR_ANALYSIS_DIR / f"{model_name}_cer_breakdown.csv"
+    if not breakdown_file.exists():
+        raise HTTPException(status_code=404, detail=f"Breakdown for model '{model_name}' not found.")
+
+    df = pd.read_csv(breakdown_file).fillna("")
+    rows = df[df["id"] == sample_id]
+    if len(rows) == 0:
+        raise HTTPException(status_code=404, detail=f"Sample '{sample_id}' not found in {model_name} breakdown.")
+
+    row = rows.iloc[0].to_dict()
+    audio_path = Path(str(row.get("audio_path", "")))
+    audio_filename = audio_path.name
+    audio_url = f"/api/audio/{audio_filename}"
+
+    norm_ref = str(row.get("reference_norm", ""))
+    norm_hyp = str(row.get("hypothesis_norm", ""))
+    s, i, d, cer_pct, diff_tokens = compute_character_diff(norm_ref, norm_hyp)
+
+    model_desc = MODEL_REGISTRY.get(model_name, {}).get("description", model_name)
+
+    return {
+        "id": sample_id,
+        "model_id": model_name,
+        "model_name": model_desc,
+        "audio_filename": audio_filename,
+        "audio_url": audio_url,
+        "duration_sec": float(row.get("duration_sec", 0.0) or 0.0),
+        "latency_sec": float(row.get("latency_sec", 0.0) or 0.0),
+        "reference_raw": str(row.get("reference_raw", "")),
+        "reference_norm": norm_ref,
+        "hypothesis_raw": str(row.get("hypothesis_raw", "")),
+        "hypothesis_norm": norm_hyp,
+        "ref_len": int(row.get("ref_len", 0) or len(norm_ref)),
+        "hyp_len": int(row.get("hyp_len", 0) or len(norm_hyp)),
+        "substitutions": int(row.get("substitutions", 0) or s),
+        "insertions": int(row.get("insertions", 0) or i),
+        "deletions": int(row.get("deletions", 0) or d),
+        "sample_cer_pct": float(row.get("sample_cer_pct", 0.0) or cer_pct),
+        "diff_tokens": diff_tokens,
+        "timestamp": "Verified Benchmark",
+    }
+
+
 @app.post("/api/predict")
 async def predict_audio(
     model_name: str = Form("meta_mms_1b"),
