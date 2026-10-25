@@ -1,7 +1,12 @@
 import React from 'react';
-import { Clock, Volume2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Clock, Volume2 } from 'lucide-react';
+import MultiModelComparisonCard from './MultiModelComparisonCard';
 
 export default function StackItemCard({ item, isTop }) {
+  if (item && item.is_multi_model) {
+    return <MultiModelComparisonCard item={item} isTop={isTop} />;
+  }
+
   const cer = item.sample_cer_pct;
 
   const getCerClass = (cerVal) => {
