@@ -246,6 +246,17 @@ body {
   background: #16A34A;
 }
 
+.status-indicator-dot.offline {
+  background: #DC2626;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
+}
+
+.status-pill.status-pill-offline {
+  border-color: #F87171;
+  background: #FEF2F2;
+  color: #991B1B;
+}
+
 /* =====================================================================
    EDITORIAL BANNER (Clean Minimal Flat)
    ===================================================================== */
