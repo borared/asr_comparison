@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Mic, Square, FileAudio, ArrowRight, Loader2, Play, PlusCircle, Volume2, CheckCircle2, Trash2 } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Upload, Mic, Square, ArrowRight, Loader2, Play, PlusCircle, Volume2, CheckCircle2, Trash2 } from 'lucide-react';
 
 export default function AudioInputCard({
   datasetSamples,
@@ -17,6 +17,8 @@ export default function AudioInputCard({
   nextSampleId,
   lastPrediction,
   setLastPrediction,
+  selectedModel = 'meta_mms_1b',
+  streamProgress = null,
 }) {
   const [inputMode, setInputMode] = useState('preloaded'); // 'preloaded' | 'upload' | 'mic'
   const [isRecording, setIsRecording] = useState(false);
@@ -387,17 +389,28 @@ export default function AudioInputCard({
             disabled={isLoading || !hasAudio}
             style={{
               cursor: isLoading || !hasAudio ? 'not-allowed' : 'pointer',
+              background: selectedModel === 'all' ? 'var(--accent-yellow)' : 'var(--accent-yellow)',
             }}
           >
             {isLoading ? (
               <>
                 <Loader2 size={18} className="animate-spin" />
-                <span>Evaluating Audio with Model... ({elapsedSec}s)</span>
+                <span>
+                  {selectedModel === 'all' && streamProgress
+                    ? `[${streamProgress.step}/${streamProgress.total}] Evaluating ${streamProgress.model_name}... (${elapsedSec}s)`
+                    : selectedModel === 'all'
+                    ? `Evaluating All 5 Models... (${elapsedSec}s)`
+                    : `Evaluating Audio with Model... (${elapsedSec}s)`}
+                </span>
               </>
             ) : (
               <>
                 <Play size={16} fill="currentColor" />
-                <span>Step 1: Run Model Prediction & Push to Stack</span>
+                <span>
+                  {selectedModel === 'all'
+                    ? 'Step 1: Run All 5 Models & Compare Side-by-Side'
+                    : 'Step 1: Run Model Prediction & Push to Stack'}
+                </span>
                 <ArrowRight size={18} strokeWidth={2.5} />
               </>
             )}
@@ -410,7 +423,9 @@ export default function AudioInputCard({
               fontFamily: 'JetBrains Mono, monospace',
             }}
           >
-            Transcribes audio, evaluates CER %, and pushes result to Stack below
+            {selectedModel === 'all'
+              ? 'Evaluates all 5 models sequentially with memory safety, pushes ranked comparison to Stack'
+              : 'Transcribes audio, evaluates CER %, and pushes result to Stack below'}
           </div>
         </div>
 
@@ -432,7 +447,11 @@ export default function AudioInputCard({
             <PlusCircle size={18} />
             <span>
               {hasPredicted
-                ? `Step 2: Save Verified Prediction to Dataset (as ${nextSampleId || 'km_eval_0019'})`
+                ? lastPrediction?.is_multi_model
+                  ? `Step 2: Save All 5 Predictions to Dataset (as ${nextSampleId || 'km_eval_0019'})`
+                  : `Step 2: Save Verified Prediction to Dataset (as ${nextSampleId || 'km_eval_0019'})`
+                : selectedModel === 'all'
+                ? `Step 2: Save All 5 Predictions to Dataset (Run Step 1 First)`
                 : `Step 2: Save to Benchmark Dataset (Run Step 1 First)`}
             </span>
             <CheckCircle2 size={18} strokeWidth={2.5} />
@@ -447,10 +466,16 @@ export default function AudioInputCard({
             }}
           >
             {hasPredicted ? (
-              <>
-                ✓ Hypothesis ready: "{lastPrediction.hypothesis_raw ? lastPrediction.hypothesis_raw.slice(0, 32) + '...' : '(Empty)'}"
-                {lastPrediction.sample_cer_pct !== null ? ` [CER: ${lastPrediction.sample_cer_pct}%]` : ''} • Click to commit sample
-              </>
+              lastPrediction?.is_multi_model ? (
+                <>
+                  ✓ All {lastPrediction.results?.length || 5} models evaluated & ranked • Click to synchronize sample across all breakdowns & ground truth
+                </>
+              ) : (
+                <>
+                  ✓ Hypothesis ready: "{lastPrediction.hypothesis_raw ? lastPrediction.hypothesis_raw.slice(0, 32) + '...' : '(Empty)'}"
+                  {lastPrediction.sample_cer_pct !== null ? ` [CER: ${lastPrediction.sample_cer_pct}%]` : ''} • Click to commit sample
+                </>
+              )
             ) : (
               'Run Step 1 prediction above first to inspect hypothesis before saving'
             )}
