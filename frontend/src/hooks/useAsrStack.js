@@ -70,23 +70,48 @@ export function useAsrStack() {
       return str;
     };
 
-    const rows = stack.map((item) => [
-      escapeCsv(item.id),
-      escapeCsv(item.audio_filename),
-      escapeCsv(item.duration_sec),
-      escapeCsv(item.model_name),
-      escapeCsv(item.reference_raw),
-      escapeCsv(item.reference_norm),
-      escapeCsv(item.hypothesis_raw),
-      escapeCsv(item.hypothesis_norm),
-      escapeCsv(item.ref_len),
-      escapeCsv(item.hyp_len),
-      escapeCsv(item.substitutions),
-      escapeCsv(item.insertions),
-      escapeCsv(item.deletions),
-      escapeCsv(item.sample_cer_pct),
-      escapeCsv(item.latency_sec),
-    ]);
+    const rows = [];
+    stack.forEach((item) => {
+      if (item.is_multi_model && Array.isArray(item.results)) {
+        item.results.forEach((r) => {
+          rows.push([
+            escapeCsv(item.id),
+            escapeCsv(item.audio_filename),
+            escapeCsv(item.duration_sec),
+            escapeCsv(r.model_name),
+            escapeCsv(item.reference_raw),
+            escapeCsv(item.reference_norm),
+            escapeCsv(r.hypothesis_raw),
+            escapeCsv(r.hypothesis_norm),
+            escapeCsv(r.ref_len),
+            escapeCsv(r.hyp_len),
+            escapeCsv(r.substitutions),
+            escapeCsv(r.insertions),
+            escapeCsv(r.deletions),
+            escapeCsv(r.sample_cer_pct),
+            escapeCsv(r.latency_sec),
+          ]);
+        });
+      } else {
+        rows.push([
+          escapeCsv(item.id),
+          escapeCsv(item.audio_filename),
+          escapeCsv(item.duration_sec),
+          escapeCsv(item.model_name),
+          escapeCsv(item.reference_raw),
+          escapeCsv(item.reference_norm),
+          escapeCsv(item.hypothesis_raw),
+          escapeCsv(item.hypothesis_norm),
+          escapeCsv(item.ref_len),
+          escapeCsv(item.hyp_len),
+          escapeCsv(item.substitutions),
+          escapeCsv(item.insertions),
+          escapeCsv(item.deletions),
+          escapeCsv(item.sample_cer_pct),
+          escapeCsv(item.latency_sec),
+        ]);
+      }
+    });
 
     const csvContent =
       '\uFEFF' +
