@@ -5,6 +5,18 @@ A clean, standardized, automated evaluation pipeline for benchmarking Automatic 
 The metric calculated is exclusively **Character Error Rate (CER %)**, which is the standard evaluation metric for continuous scripts like Khmer.
 
 ---
+### Launch Instructions (How to run app)
+```bash
+# Terminal 1: Launch FastAPI Backend
+.venv\Scripts\python.exe -m uvicorn scripts.server:app --host 127.0.0.1 --port 8000
+
+# Terminal 2: Launch Vite Frontend
+cd frontend
+npm run dev
+# Studio is accessible at http://localhost:5173
+```
+
+---
 
 ## 📁 Directory Structure
 
