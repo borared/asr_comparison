@@ -9,8 +9,51 @@ from typing import Optional, List, Dict, Any
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+
+CANONICAL_BENCHMARK_MODELS = [
+    {
+        "id": "google_chirp",
+        "name": "Google Speech / Chirp",
+        "canonical": "google_chirp",
+        "architecture": "Conformer / Chirp-2",
+        "parameters": "Proprietary",
+        "type": "Cloud API (Hosted)",
+    },
+    {
+        "id": "meta_mms_1b",
+        "name": "Meta MMS-1B",
+        "canonical": "meta_mms_1b",
+        "architecture": "Wav2Vec2 + Khmer Adapter",
+        "parameters": "1.0B",
+        "type": "Open-Source (Local)",
+    },
+    {
+        "id": "sengtha_whisper_base_khmer",
+        "name": "Sengtha Whisper Base",
+        "canonical": "whisper_base_khmer",
+        "architecture": "Whisper-Base Seq2Seq",
+        "parameters": "74M",
+        "type": "Open-Source (Local)",
+    },
+    {
+        "id": "seanghay_qwen3_asr_0_6b",
+        "name": "Seanghay Qwen3-ASR 0.6B",
+        "canonical": "qwen3_khmer",
+        "architecture": "Qwen3 Audio LLM Thinker",
+        "parameters": "600M",
+        "type": "Open-Source (Local)",
+    },
+    {
+        "id": "openai_whisper_large_v3",
+        "name": "OpenAI Whisper Large v3",
+        "canonical": "whisper_large_v3",
+        "architecture": "Whisper-Large Seq2Seq",
+        "parameters": "1.55B",
+        "type": "Open-Source (Local)",
+    },
+]
 
 # Setup paths
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -511,6 +554,170 @@ async def predict_audio(
     }
 
 
+@app.post("/api/predict-all-stream")
+async def predict_all_stream(
+    expected_output: Optional[str] = Form(""),
+    sample_id: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+):
+    """
+    Server-Sent Events (SSE) streaming endpoint that sequentially evaluates
+    all 5 benchmark ASR models on the provided audio input, streaming progress
+    events per model, and returning a ranked multi-model comparison payload.
+    """
+    audio_path = None
+    audio_filename = ""
+    audio_url = ""
+    duration_sec = 0.0
+
+    # 1. Determine audio source
+    if file and file.filename:
+        raw_temp = UPLOAD_DIR / f"raw_all_{int(time.time() * 1000)}_{file.filename}"
+        with open(raw_temp, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        pcm_filename = f"upload_all_{int(time.time() * 1000)}.wav"
+        pcm_path = UPLOAD_DIR / pcm_filename
+        duration_sec = convert_to_pcm_wav(raw_temp, pcm_path)
+        try:
+            raw_temp.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        audio_path = str(pcm_path)
+        audio_filename = pcm_filename
+        audio_url = f"/api/audio/{pcm_filename}"
+
+    elif sample_id:
+        found = False
+        if GROUND_TRUTH_FILE.exists():
+            with open(GROUND_TRUTH_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        item = json.loads(line)
+                        if item["id"] == sample_id:
+                            rel_path = Path(item["audio_path"])
+                            audio_path = str(BASE_DIR / rel_path)
+                            audio_filename = Path(audio_path).name
+                            audio_url = f"/api/audio/{audio_filename}"
+                            duration_sec = item.get("duration", 0.0)
+                            if not expected_output:
+                                expected_output = item.get("reference", "")
+                            found = True
+                            break
+        if not found or not audio_path or not Path(audio_path).exists():
+            raise HTTPException(status_code=404, detail=f"Dataset sample '{sample_id}' not found.")
+    else:
+        raise HTTPException(status_code=400, detail="Must provide an uploaded audio file or sample_id.")
+
+    raw_ref = (expected_output or "").strip()
+    norm_ref = normalize_khmer(raw_ref)
+
+    def event_generator():
+        import gc
+        try:
+            import torch
+        except Exception:
+            torch = None
+
+        total_models = len(CANONICAL_BENCHMARK_MODELS)
+        results = []
+
+        # Yield initial metadata event
+        init_data = {
+            "event": "init",
+            "total_models": total_models,
+            "audio_filename": audio_filename,
+            "cached_filename": audio_filename,
+            "audio_url": audio_url,
+            "duration_sec": duration_sec,
+            "reference_raw": raw_ref,
+            "reference_norm": norm_ref,
+            "ref_len": len(norm_ref),
+        }
+        yield f"data: {json.dumps(init_data, ensure_ascii=False)}\n\n"
+
+        for idx, m in enumerate(CANONICAL_BENCHMARK_MODELS):
+            model_id = m["id"]
+            model_name = m["name"]
+            canonical = m["canonical"]
+
+            # Announce start of model inference
+            yield f"data: {json.dumps({'event': 'model_start', 'step': idx + 1, 'total': total_models, 'model_id': model_id, 'model_name': model_name}, ensure_ascii=False)}\n\n"
+
+            raw_hyp = ""
+            lat_sec = 0.0
+            error_msg = None
+
+            try:
+                runner = get_or_load_runner(canonical)
+                raw_hyp, lat_sec = runner.transcribe(audio_path)
+            except Exception as e:
+                logger.error(f"Inference error with model {model_id}: {e}", exc_info=True)
+                error_msg = str(e)
+
+            norm_hyp = normalize_khmer(raw_hyp)
+            s, i, d, cer_pct, diff_tokens = 0, 0, 0, None, []
+            if norm_ref:
+                s, i, d, cer_pct, diff_tokens = compute_character_diff(norm_ref, norm_hyp)
+
+            model_result = {
+                "model_id": model_id,
+                "model_name": model_name,
+                "architecture": m["architecture"],
+                "parameters": m["parameters"],
+                "type": m["type"],
+                "hypothesis_raw": raw_hyp,
+                "hypothesis_norm": norm_hyp,
+                "ref_len": len(norm_ref),
+                "hyp_len": len(norm_hyp),
+                "substitutions": s,
+                "insertions": i,
+                "deletions": d,
+                "sample_cer_pct": cer_pct,
+                "latency_sec": round(lat_sec, 3),
+                "diff_tokens": diff_tokens,
+                "error": error_msg,
+            }
+            results.append(model_result)
+
+            # Proactive GPU/RAM garbage collection
+            if torch and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
+
+            # Stream intermediate completion
+            yield f"data: {json.dumps({'event': 'model_complete', 'step': idx + 1, 'total': total_models, 'model_id': model_id, 'model_name': model_name, 'result': model_result}, ensure_ascii=False)}\n\n"
+
+        # Sort ranked results: lowest CER first, then by latency
+        sorted_results = sorted(
+            results,
+            key=lambda x: (
+                x["sample_cer_pct"] if x["sample_cer_pct"] is not None else 9999.0,
+                x["latency_sec"],
+            ),
+        )
+
+        batch_id = f"batch_{int(time.time() * 1000)}"
+        final_payload = {
+            "id": batch_id,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "is_multi_model": True,
+            "audio_filename": audio_filename,
+            "cached_filename": audio_filename,
+            "audio_url": audio_url,
+            "duration_sec": duration_sec,
+            "reference_raw": raw_ref,
+            "reference_norm": norm_ref,
+            "ref_len": len(norm_ref),
+            "results": sorted_results,
+        }
+
+        yield f"data: {json.dumps({'event': 'complete', 'data': final_payload}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 @app.post("/api/dataset/create-sample")
 async def create_dataset_sample(
     model_name: str = Form("meta_mms_1b"),
@@ -648,6 +855,178 @@ async def create_dataset_sample(
         "sample_cer_pct": sample_cer_pct,
         "diff_tokens": diff_tokens,
         "is_benchmark_sample": True,
+    }
+
+
+@app.post("/api/dataset/create-sample-all")
+async def create_dataset_sample_all(
+    expected_output: str = Form(""),
+    cached_filename: Optional[str] = Form(None),
+    results_json: str = Form("[]"),
+    file: Optional[UploadFile] = File(None),
+):
+    """
+    Atomically commits an evaluation across ALL 5 benchmark models into the benchmark dataset:
+    1. Saves the audio directly into data/raw_audio/km_eval_XXXX.wav.
+    2. Registers reference in data/ground_truth.jsonl.
+    3. Appends predictions to all 5 hypotheses/*.jsonl files.
+    4. Appends fine-grained error rows to all 5 results/error_analysis/*_cer_breakdown.csv files.
+    5. Re-runs recalculate_metrics_summary() so all models remain synchronized with identical sample counts.
+    """
+    import pandas as pd
+
+    try:
+        results_list = json.loads(results_json) if results_json else []
+    except Exception:
+        results_list = []
+
+    next_id = get_next_sample_id()
+    target_filename = f"{next_id}.wav"
+    target_audio_path = RAW_AUDIO_DIR / target_filename
+    duration_sec = 0.0
+
+    # 1. Obtain audio from cached file or direct upload
+    if cached_filename:
+        source_cached = UPLOAD_DIR / cached_filename
+        if not source_cached.exists():
+            source_cached = RAW_AUDIO_DIR / cached_filename
+        if source_cached.exists():
+            duration_sec = convert_to_pcm_wav(source_cached, target_audio_path)
+        else:
+            raise HTTPException(status_code=400, detail=f"Cached audio file not found: {cached_filename}")
+    elif file and file.filename:
+        raw_temp = UPLOAD_DIR / f"raw_create_all_{int(time.time() * 1000)}_{file.filename}"
+        with open(raw_temp, "wb") as f:
+            f.write(await file.read())
+        duration_sec = convert_to_pcm_wav(raw_temp, target_audio_path)
+        try:
+            raw_temp.unlink(missing_ok=True)
+        except Exception:
+            pass
+    else:
+        raise HTTPException(status_code=400, detail="Either cached_filename or file is required.")
+
+    raw_ref = (expected_output or "").strip()
+    norm_ref = normalize_khmer(raw_ref)
+
+    # 2. Append to data/ground_truth.jsonl
+    gt_entry = {
+        "id": next_id,
+        "audio_path": f"data/raw_audio/{target_filename}",
+        "duration": duration_sec,
+        "reference": raw_ref,
+    }
+    with open(GROUND_TRUTH_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(gt_entry, ensure_ascii=False) + "\n")
+
+    # 3. Synchronize all 5 models
+    results_by_model = {r["model_id"]: r for r in results_list if isinstance(r, dict) and "model_id" in r}
+    updated_results = []
+
+    for m in CANONICAL_BENCHMARK_MODELS:
+        model_id = m["id"]
+        canonical = m["canonical"]
+
+        if model_id in results_by_model:
+            item = results_by_model[model_id]
+            raw_hyp = item.get("hypothesis_raw", "")
+            norm_hyp = item.get("hypothesis_norm", normalize_khmer(raw_hyp))
+            lat_sec = float(item.get("latency_sec", 0.0) or 0.0)
+            s = int(item.get("substitutions", 0) or 0)
+            i = int(item.get("insertions", 0) or 0)
+            d = int(item.get("deletions", 0) or 0)
+            cer_pct = item.get("sample_cer_pct")
+            diff_tokens = item.get("diff_tokens", [])
+            if cer_pct is None and norm_ref:
+                s, i, d, cer_pct, diff_tokens = compute_character_diff(norm_ref, norm_hyp)
+        else:
+            runner = get_or_load_runner(canonical)
+            try:
+                raw_hyp, lat_sec = runner.transcribe(str(target_audio_path))
+            except Exception as e:
+                logger.error(f"Error transcribing created sample for {model_id}: {e}")
+                raw_hyp, lat_sec = "", 0.0
+            norm_hyp = normalize_khmer(raw_hyp)
+            s, i, d, cer_pct, diff_tokens = compute_character_diff(norm_ref, norm_hyp)
+
+        # 3a. Append to hypotheses/{model_id}.jsonl
+        hyp_file = BASE_DIR / "hypotheses" / f"{model_id}.jsonl"
+        with open(hyp_file, "a", encoding="utf-8") as f:
+            f.write(
+                json.dumps(
+                    {"id": next_id, "hypothesis": raw_hyp, "latency_sec": round(lat_sec, 3)},
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+
+        # 3b. Append to results/error_analysis/{model_id}_cer_breakdown.csv
+        breakdown_file = ERROR_ANALYSIS_DIR / f"{model_id}_cer_breakdown.csv"
+        new_row = {
+            "id": next_id,
+            "audio_path": f"data/raw_audio/{target_filename}",
+            "duration_sec": duration_sec,
+            "reference_raw": raw_ref,
+            "reference_norm": norm_ref,
+            "hypothesis_raw": raw_hyp,
+            "hypothesis_norm": norm_hyp,
+            "ref_len": len(norm_ref),
+            "hyp_len": len(norm_hyp),
+            "substitutions": s,
+            "insertions": i,
+            "deletions": d,
+            "sample_cer_pct": cer_pct if cer_pct is not None else 0.0,
+            "latency_sec": round(lat_sec, 3),
+        }
+        if breakdown_file.exists():
+            df_b = pd.read_csv(breakdown_file).fillna("")
+            df_b = pd.concat([df_b, pd.DataFrame([new_row])], ignore_index=True)
+        else:
+            df_b = pd.DataFrame([new_row])
+        df_b.to_csv(breakdown_file, index=False)
+
+        updated_results.append({
+            "model_id": model_id,
+            "model_name": m["name"],
+            "architecture": m["architecture"],
+            "parameters": m["parameters"],
+            "type": m["type"],
+            "hypothesis_raw": raw_hyp,
+            "hypothesis_norm": norm_hyp,
+            "ref_len": len(norm_ref),
+            "hyp_len": len(norm_hyp),
+            "substitutions": s,
+            "insertions": i,
+            "deletions": d,
+            "sample_cer_pct": cer_pct,
+            "latency_sec": round(lat_sec, 3),
+            "diff_tokens": diff_tokens,
+        })
+
+    # 4. Recalculate summary metrics across all models
+    recalculate_metrics_summary()
+
+    # Sort results for display
+    sorted_updated = sorted(
+        updated_results,
+        key=lambda x: (
+            x["sample_cer_pct"] if x["sample_cer_pct"] is not None else 9999.0,
+            x["latency_sec"],
+        ),
+    )
+
+    return {
+        "id": next_id,
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "is_multi_model": True,
+        "is_benchmark_sample": True,
+        "audio_filename": target_filename,
+        "audio_url": f"/api/audio/{target_filename}",
+        "duration_sec": duration_sec,
+        "reference_raw": raw_ref,
+        "reference_norm": norm_ref,
+        "ref_len": len(norm_ref),
+        "results": sorted_updated,
     }
 
 
