@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, FileText, ChevronRight, BarChart2, Trash2, Eye } from 'lucide-react';
+import { Trophy, FileText, ChevronRight, Trash2, Eye } from 'lucide-react';
 import StackItemCard from './StackItemCard';
 
 export default function MetricsLeaderboard({ onDatasetChanged }) {
   const [metrics, setMetrics] = useState({ summary: [], breakdowns: {} });
   const [selectedBreakdown, setSelectedBreakdown] = useState('meta_mms_1b');
-  const [loading, setLoading] = useState(true);
+  const [_loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [confirmingId, setConfirmingId] = useState(null);
   const [expandedSampleId, setExpandedSampleId] = useState(null);
