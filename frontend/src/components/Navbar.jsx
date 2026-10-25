@@ -1,7 +1,7 @@
 import React from 'react';
-import { Layers, BarChart3, Radio } from 'lucide-react';
+import { Layers, BarChart3 } from 'lucide-react';
 
-export default function Navbar({ activeTab, setActiveTab, stackCount }) {
+export default function Navbar({ activeTab, setActiveTab, stackCount, apiOnline = true }) {
   return (
     <header className="editorial-header">
       {/* Brand Wordmark (Inspired by Dsgners®) */}
@@ -40,12 +40,9 @@ export default function Navbar({ activeTab, setActiveTab, stackCount }) {
 
       {/* Status & Session Tags */}
       <div className="header-meta-group">
-        <div className="status-pill">
-          <span className="status-indicator-dot" />
-          <span>API: ONLINE</span>
-        </div>
-        <div className="status-pill" style={{ display: 'none', md: 'inline-flex' }}>
-          <span>16 SAMPLES</span>
+        <div className={`status-pill ${apiOnline ? '' : 'status-pill-offline'}`}>
+          <span className={`status-indicator-dot ${apiOnline ? '' : 'offline'}`} />
+          <span>{apiOnline ? 'API: ONLINE' : 'API: OFFLINE (PORT 8000)'}</span>
         </div>
       </div>
     </header>
