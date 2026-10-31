@@ -1,7 +1,7 @@
 {"id": "km_eval_0001", "audio_path": "data/raw_audio/km_eval_0001.wav", "duration": 12.17, "reference": "បាទ ជម្រាបសួរ ជម្រាបសួរ​បង ខ្ញុំ​ចង់​សួរ​បង​ពាក់ព័ន្ធ​ជាមួយ​នឹង​ខាង​ប៊ូហ្វេ​បង ហាង​របស់​បង​ហ្នឹង​មាន​នៅ​សល់​កន្លែង​អត់​បង? នៅ​សល់​តុ​អត់?"}
 {"id": "km_eval_0002", "audio_path": "data/raw_audio/km_eval_0002.mp3", "duration": 12.98, "reference": "ជម្រាបសួរ​បង ខ្ញុំ​ចង់​កក់​ប៊ូហ្វេ កក់​តុ​មួយ​ម៉ោងប្រាំ ហើយ​មនុស្សបួននាក់​បង បាទ"}
-{"id": "km_eval_0003", "audio_path": "data/raw_audio/km_eval_0003.mp3", "duration": 12.31, "reference": ""}
-{"id": "km_eval_0004", "audio_path": "data/raw_audio/km_eval_0004.mp3", "duration": 13.63, "reference": "ការប្រៀបធៀបគំរូវាយតម្លៃលើសំណុំទិន្នន័យជាក់ស្តែង"}
+{"id": "km_eval_0003", "audio_path": "data/raw_audio/km_eval_0003.mp3", "duration": 12.31, "reference": "ជំរាបសួរបង ជំរាបសួរបង ជំរាបលាបង បាទបង​ បាទ ចាស"}
+{"id": "km_eval_0004", "audio_path": "data/raw_audio/km_eval_0004.mp3", "duration": 13.63, "reference": "ជម្រាបសួរបង ខាងប៊ូហេ្វបងម៉ោងប្រាំអាចនៅសល់មានតុអង្គុយសម្រាប់មនុស្សប្រាំនាក់ ព្រោះអីខ្ញុំចង់កក់តុមនុស្សប្រាំនាក់ ហើយនៅម៉ោង៥ល្ងាចហ្នឹងបង"}
 {"id": "km_eval_0005", "audio_path": "data/raw_audio/km_eval_0005.mp3", "duration": 22.39, "reference": "បុផ្ផា សិត កេតនា លីសុវត្ថិ យៀកខៃ កញ្ញា ធីតា នារី បញ្ចពណ៌ ស៊ូគាង"}
 {"id": "km_eval_0006", "audio_path": "data/raw_audio/km_eval_0006.mp3", "duration": 18.84, "reference": "អេងហួរ ធារ៉ា បូរ៉ា សុខមនោ ណារ៉ុង រស្មី លាភហួរ លីពូ"}
 {"id": "km_eval_0007", "audio_path": "data/raw_audio/km_eval_0007.mp3", "duration": 16.32, "reference": "ផ្លូវលេខ ផ្ទះលេខ ភូមិ ឃុំ សង្កាត់ ស្រុក ខណ្ឌ ខេត្ត ក្រុង រាជធានី"}
@@ -15,3 +15,5 @@
 {"id": "km_eval_0015", "audio_path": "data/raw_audio/km_eval_0015.mp3", "duration": 9.89, "reference": "ខ្ញុំ អ្នក គាត់ យើង នាង ពួកគេ ពួកខ្ញុំ ពួកគាត់ ពួកយើង"}
 {"id": "km_eval_0016", "audio_path": "data/raw_audio/km_eval_0016.mp3", "duration": 21.62, "reference": "ចន្ទ អង្គារ ពុធ ព្រហស្បតិ៍ សុក្រ សៅរ៍ អាទិត្យ មករា កុម្ភៈ មីនា មេសា ឧសភា មិថុនា កក្កដា សីហា កញ្ញា តុលា វិច្ឆិកា ធ្នូ"}
 {"id": "km_eval_0017", "audio_path": "data/raw_audio/km_eval_0017.wav", "duration": 8.82, "reference": "អាឡូជម្រាបសួរបង ខ្ញុំត្រូវការកាហ្វេទឹកដោះគោមួយកែវ"}
+{"id": "km_eval_0018", "audio_path": "data/raw_audio/km_eval_0018.wav", "duration": 6.72, "reference": ""}
+{"id": "km_eval_0019", "audio_path": "data/raw_audio/km_eval_0019.wav", "duration": 8.82, "reference": "អាឡូជម្រាបសួរបង ខ្ញុំត្រូវការកាហ្វេទឹកដោះគោមួយកែវ"}
